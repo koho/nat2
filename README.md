@@ -1,6 +1,6 @@
 # nat2
 
-Expose your local service to Internet in full cone NAT network.
+nat2 simply means "nat to". It is a tool that helps you expose local services to the Internet in a Full-Cone NAT network. Moreover, you can bind the mapped address automatically to your DNS provider or send it via HTTP request.
 
 ## Features
 
