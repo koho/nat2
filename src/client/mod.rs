@@ -26,5 +26,5 @@ impl Client {
     }
 }
 
-pub mod udp;
 pub mod tcp;
+pub mod udp;

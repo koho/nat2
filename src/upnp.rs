@@ -40,7 +40,8 @@ impl Upnp {
         let gateway = search_gateway(SearchOptions {
             bind_addr: SocketAddr::new(ip, 0),
             ..Default::default()
-        }).await?;
+        })
+        .await?;
         Ok(Self {
             local_ip: ip,
             gateway,
@@ -49,19 +50,29 @@ impl Upnp {
     }
 
     /// Request a new port mapping in gateway.
-    pub async fn add_port(&mut self, protocol: PortMappingProtocol, forward_addr: SocketAddr) -> Result<PortMap> {
+    pub async fn add_port(
+        &mut self,
+        protocol: PortMappingProtocol,
+        forward_addr: SocketAddr,
+    ) -> Result<PortMap> {
         let description = description();
         let mut forward_addr = forward_addr.to_owned();
         // Forward to 0.0.0.0 is same as the local ip of this machine.
         if forward_addr.ip().is_unspecified() {
             forward_addr.set_ip(self.local_ip);
         }
-        let mut external_port = self.gateway.add_any_port(protocol, forward_addr, self.timeout, description.as_str()).await;
+        let mut external_port = self
+            .gateway
+            .add_any_port(protocol, forward_addr, self.timeout, description.as_str())
+            .await;
         if let Err(ref e) = external_port {
             if matches!(e, OnlyPermanentLeasesSupported) {
                 // Gateway only supports permanent leases.
                 // Retry with a lease duration of 0.
-                external_port = self.gateway.add_any_port(protocol, forward_addr, 0, description.as_str()).await;
+                external_port = self
+                    .gateway
+                    .add_any_port(protocol, forward_addr, 0, description.as_str())
+                    .await;
                 self.timeout = 0;
             }
         }
@@ -75,17 +86,28 @@ impl Upnp {
 
     /// Renew a port mapping before the ttl.
     pub async fn renew_port(&self, pm: &mut PortMap) -> Result<()> {
-        if pm.timestamp == 0 || OffsetDateTime::now_utc().unix_timestamp() - pm.timestamp < MAPPING_TIMEOUT {
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        if pm.timestamp == 0 || now - pm.timestamp < MAPPING_TIMEOUT {
             return Ok(());
         }
-        self.gateway.add_port(pm.protocol, pm.external_port, pm.forward_addr, self.timeout, description().as_str()).await?;
+        self.gateway
+            .add_port(
+                pm.protocol,
+                pm.external_port,
+                pm.forward_addr,
+                self.timeout,
+                description().as_str(),
+            )
+            .await?;
         pm.timestamp = OffsetDateTime::now_utc().unix_timestamp();
         Ok(())
     }
 
     /// Remove a port mapping in gateway.
     pub async fn remove_port(&self, pm: &mut PortMap) -> Result<()> {
-        self.gateway.remove_port(pm.protocol, pm.external_port).await?;
+        self.gateway
+            .remove_port(pm.protocol, pm.external_port)
+            .await?;
         pm.external_port = 0;
         pm.timestamp = 0;
         Ok(())

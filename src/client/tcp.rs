@@ -1,4 +1,5 @@
 use crate::client::Client;
+use anyhow::Result;
 use std::io;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -11,13 +12,15 @@ use tokio::net::{lookup_host, TcpSocket, TcpStream, ToSocketAddrs};
 use tokio::sync::mpsc::Sender;
 use tokio::time;
 use tokio::time::sleep;
+use tracing::error;
 use url::ParseError::{EmptyHost, InvalidPort};
 use url::{Position, Url};
-use anyhow::Result;
-use tracing::{error};
 
 /// Creates a new TCP connection.
-async fn new_connection<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A) -> io::Result<TcpStream> {
+async fn new_connection<A: ToSocketAddrs>(
+    local_addr: SocketAddr,
+    remote_addr: A,
+) -> io::Result<TcpStream> {
     let mut last_err = None;
     for addr in lookup_host(remote_addr).await? {
         if let SocketAddr::V4(_) = addr {
@@ -39,7 +42,10 @@ async fn new_connection<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A
 }
 
 /// Read the mapped address from STUN server.
-async fn map_address<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A) -> Result<XorMappedAddress> {
+async fn map_address<A: ToSocketAddrs>(
+    local_addr: SocketAddr,
+    remote_addr: A,
+) -> Result<XorMappedAddress> {
     let mut stream = new_connection(local_addr, remote_addr).await?;
     let mut msg = Message::new();
     msg.build(&[Box::new(TransactionId::new()), Box::new(BINDING_REQUEST)])?;
@@ -50,7 +56,12 @@ async fn map_address<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A) -
     let mut buf = vec![0; message_len as usize + TRANSACTION_ID_SIZE + size_of_val(&MAGIC_COOKIE)];
     stream.read_exact(&mut buf).await?;
     let mut msg = Message::new();
-    let payload = [&message_type.to_be_bytes(), &message_len.to_be_bytes(), buf.as_slice()].concat();
+    let payload = [
+        &message_type.to_be_bytes(),
+        &message_len.to_be_bytes(),
+        buf.as_slice(),
+    ]
+    .concat();
     let mut reader = BufReader::new(payload.as_slice());
     msg.read_from(&mut reader)?;
     let mut xor_addr = XorMappedAddress::default();
@@ -78,7 +89,11 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(name: String, local_addr: impl Into<String>, callback: Sender<XorMappedAddress>) -> Builder {
+    pub fn new(
+        name: String,
+        local_addr: impl Into<String>,
+        callback: Sender<XorMappedAddress>,
+    ) -> Builder {
         Builder {
             name,
             local_addr: local_addr.into(),
@@ -105,16 +120,34 @@ impl Builder {
     }
 
     pub async fn build(self) -> Result<Client> {
-        worker(self.name, self.local_addr.parse()?, self.keepalive_url.to_string(), self.stun_addr.to_string(), self.interval, self.callback).await
+        worker(
+            self.name,
+            self.local_addr.parse()?,
+            self.keepalive_url.to_string(),
+            self.stun_addr.to_string(),
+            self.interval,
+            self.callback,
+        )
+        .await
     }
 }
 
 /// Returns a TCP hole punching client.
-async fn worker(name: String, local_addr: SocketAddr, keepalive_url: String, stun_addr: String, interval: u64, callback: Sender<XorMappedAddress>) -> Result<Client> {
+async fn worker(
+    name: String,
+    local_addr: SocketAddr,
+    keepalive_url: String,
+    stun_addr: String,
+    interval: u64,
+    callback: Sender<XorMappedAddress>,
+) -> Result<Client> {
     let url = Url::parse(keepalive_url.as_str())?;
     let mut host = url.host().ok_or(EmptyHost)?.to_string();
     let port = url.port_or_known_default().ok_or(InvalidPort)?.to_string();
-    host.push_str(&url.port().map_or(String::new(), |v| format!(":{}", v.to_string())));
+    host.push_str(
+        &url.port()
+            .map_or(String::new(), |v| format!(":{}", v.to_string())),
+    );
     let remote_addr = format!("{}:{}", host, port);
     // Determine the local binding address and reuse it in further connections.
     let sock = TcpSocket::new_v4()?;
@@ -124,11 +157,15 @@ async fn worker(name: String, local_addr: SocketAddr, keepalive_url: String, stu
     let worker_name = name.clone();
     let handle = tokio::spawn(async move {
         let mut discard = tokio::io::empty();
-        let payload = format!("GET {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n", &url[Position::BeforePath..], host);
+        let payload = format!(
+            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n",
+            &url[Position::BeforePath..],
+            host
+        );
         loop {
             match new_connection(local_addr, &remote_addr).await {
                 Err(e) => {
-                    error!(mapper=name, "{e}");
+                    error!(mapper = name, "{e}");
                     sleep(Duration::from_secs(10)).await;
                 }
                 Ok(mut stream) => {
@@ -138,25 +175,25 @@ async fn worker(name: String, local_addr: SocketAddr, keepalive_url: String, stu
                     let mut interval = time::interval(Duration::from_secs(interval));
                     loop {
                         tokio::select! {
-                                Err(e) = &mut read => {
+                            Err(e) = &mut read => {
+                                error!(mapper=name, "{e}");
+                                break;
+                            }
+                            _ = interval.tick() => {
+                                if let Err(e) = writer.write(payload.as_bytes()).await {
                                     error!(mapper=name, "{e}");
                                     break;
                                 }
-                                _ = interval.tick() => {
-                                    if let Err(e) = writer.write(payload.as_bytes()).await {
-                                        error!(mapper=name, "{e}");
-                                        break;
-                                    }
-                                    match map_address(local_addr, &stun_addr).await {
-                                        Ok(addr) => {
-                                            if callback.send(addr).await.is_err() {
-                                                return;
-                                            }
+                                match map_address(local_addr, &stun_addr).await {
+                                    Ok(addr) => {
+                                        if callback.send(addr).await.is_err() {
+                                            return;
                                         }
-                                        Err(e) => error!(mapper=name, "{e}")
                                     }
+                                    Err(e) => error!(mapper=name, "{e}")
                                 }
                             }
+                        }
                     }
                 }
             }

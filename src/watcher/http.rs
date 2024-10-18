@@ -1,12 +1,12 @@
 use crate::config::Metadata;
 use crate::watcher::{format_value, Watcher};
+use anyhow::Result;
 use async_trait::async_trait;
+use reqwest::header::HeaderMap;
+use reqwest::Method;
 use std::collections::HashMap;
 use std::str::FromStr;
 use stun::xoraddr::XorMappedAddress;
-use anyhow::Result;
-use reqwest::header::HeaderMap;
-use reqwest::Method;
 use tracing::debug;
 use url::Url;
 
@@ -28,7 +28,13 @@ pub struct Http {
 }
 
 impl Http {
-    pub fn new(name: String, url: String, method: &str, body: Option<String>, headers: HashMap<String, String>) -> Result<Self> {
+    pub fn new(
+        name: String,
+        url: String,
+        method: &str,
+        body: Option<String>,
+        headers: HashMap<String, String>,
+    ) -> Result<Self> {
         let url = Url::parse(url.as_str())?;
         let method = Method::from_str(method)?;
         let headers = HeaderMap::try_from(&headers)?;
@@ -62,12 +68,18 @@ impl Watcher for Http {
         if let Some(query) = url.query() {
             url.set_query(Some(format_value(&query.to_string(), addr).as_str()));
         }
-        let mut req = client.request(self.method.clone(), url).headers(self.headers.clone());
+        let mut req = client
+            .request(self.method.clone(), url)
+            .headers(self.headers.clone());
         if let Some(body) = body {
             req = req.body(format_value(&body, addr));
         }
         let resp = req.send().await?.error_for_status()?;
-        debug!(code=resp.status().as_str(), name=self.name(), "request completed successfully");
+        debug!(
+            code = resp.status().as_str(),
+            name = self.name(),
+            "request completed successfully"
+        );
         Ok(())
     }
 

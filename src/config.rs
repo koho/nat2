@@ -1,8 +1,8 @@
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::path::Path;
-use serde::{Deserialize};
 
 /// Configuration for Nat2.
 #[derive(Deserialize)]

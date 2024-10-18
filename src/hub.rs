@@ -1,23 +1,23 @@
+use crate::client;
 use crate::client::Client;
 use crate::config::{Config, Metadata, Tcp, Udp};
+use crate::upnp::{PortMap, Upnp};
 use crate::watcher::dnspod::DnsPod;
+use crate::watcher::http::Http;
 use crate::watcher::Watcher;
-use crate::{client};
+use anyhow::{anyhow, Result};
 use futures::{future::select_all, FutureExt};
+use igd_next::PortMappingProtocol::{TCP, UDP};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::ops::Deref;
-use stun::Error::ErrSchemeType;
 use stun::xoraddr::XorMappedAddress;
+use stun::Error::ErrSchemeType;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::Receiver;
+use tracing::{error, info};
 use url::ParseError::{EmptyHost, InvalidPort};
 use url::Url;
-use tracing::{error, info};
-use anyhow::{anyhow, Result};
-use igd_next::PortMappingProtocol::{TCP, UDP};
-use crate::upnp::{PortMap, Upnp};
-use crate::watcher::http::Http;
 
 /// Hub manages all the port mappings and watchers.
 pub struct Hub {
@@ -42,7 +42,13 @@ struct Mapper {
 }
 
 impl Mapper {
-    async fn new_tcp(name: String, local_addr: String, metadata: Vec<Metadata>, option: &Option<Tcp>, upnp: Option<PortMap>) -> Result<Mapper> {
+    async fn new_tcp(
+        name: String,
+        local_addr: String,
+        metadata: Vec<Metadata>,
+        option: &Option<Tcp>,
+        upnp: Option<PortMap>,
+    ) -> Result<Mapper> {
         let (tx, rx) = channel(1);
         let mut c = client::tcp::Builder::new(name, local_addr.clone(), tx);
         if let Some(opt) = option {
@@ -66,7 +72,13 @@ impl Mapper {
         })
     }
 
-    async fn new_udp(name: String, local_addr: String, metadata: Vec<Metadata>, option: &Option<Udp>, upnp: Option<PortMap>) -> Result<Mapper> {
+    async fn new_udp(
+        name: String,
+        local_addr: String,
+        metadata: Vec<Metadata>,
+        option: &Option<Udp>,
+        upnp: Option<PortMap>,
+    ) -> Result<Mapper> {
         let (tx, rx) = channel(1);
         let mut c = client::udp::Builder::new(name, local_addr.clone(), tx);
         if let Some(opt) = option {
@@ -119,10 +131,22 @@ impl Hub {
         // Watcher list.
         let mut watchers: HashMap<String, Box<dyn Watcher>> = HashMap::new();
         for (key, value) in cfg.dnspod.into_iter() {
-            watchers.insert(key.clone(), Box::new(DnsPod::new(key, value.secret_id, value.secret_key)));
+            watchers.insert(
+                key.clone(),
+                Box::new(DnsPod::new(key, value.secret_id, value.secret_key)),
+            );
         }
         for (key, value) in cfg.http.into_iter() {
-            watchers.insert(key.clone(), Box::new(Http::new(key, value.url, value.method.as_str(), value.body, value.headers)?));
+            watchers.insert(
+                key.clone(),
+                Box::new(Http::new(
+                    key,
+                    value.url,
+                    value.method.as_str(),
+                    value.body,
+                    value.headers,
+                )?),
+            );
         }
         // UPnP feature.
         let global_upnp = !matches!(cfg.upnp, Some(false));
@@ -140,9 +164,14 @@ impl Hub {
             // Validate watcher metadata.
             for (i, md) in value.iter().enumerate() {
                 if let Some(watcher) = watchers.get(&md.name) {
-                    watcher.validate(md).map_err(|e| anyhow!("{e} in {key} at index {i}"))?;
+                    watcher
+                        .validate(md)
+                        .map_err(|e| anyhow!("{e} in {key} at index {i}"))?;
                 } else {
-                    return Err(anyhow!("no watcher named `{}` in {key} at index {i}", md.name));
+                    return Err(anyhow!(
+                        "no watcher named `{}` in {key} at index {i}",
+                        md.name
+                    ));
                 }
             }
             let mut pm: Option<PortMap> = None;
@@ -152,7 +181,11 @@ impl Hub {
                         if upnp.is_none() {
                             upnp = Some(Upnp::new().await?);
                         }
-                        let map = upnp.as_mut().unwrap().add_port(TCP, local_addr.parse()?).await?;
+                        let map = upnp
+                            .as_mut()
+                            .unwrap()
+                            .add_port(TCP, local_addr.parse()?)
+                            .await?;
                         local_addr = map.local_addr();
                         pm = Some(map);
                     }
@@ -163,7 +196,11 @@ impl Hub {
                         if upnp.is_none() {
                             upnp = Some(Upnp::new().await?);
                         }
-                        let map = upnp.as_mut().unwrap().add_port(UDP, local_addr.parse()?).await?;
+                        let map = upnp
+                            .as_mut()
+                            .unwrap()
+                            .add_port(UDP, local_addr.parse()?)
+                            .await?;
                         local_addr = map.local_addr();
                         pm = Some(map);
                     }
@@ -182,9 +219,8 @@ impl Hub {
 
     pub async fn run(&mut self) {
         loop {
-            let (addr, index, _) = select_all(
-                self.mappers.iter_mut().map(|v| v.rx.recv().boxed())
-            ).await;
+            let (addr, index, _) =
+                select_all(self.mappers.iter_mut().map(|v| v.rx.recv().boxed())).await;
             if addr.is_none() {
                 continue;
             }
@@ -192,22 +228,42 @@ impl Hub {
             if let Some(mapper) = self.mappers.get_mut(index) {
                 if let Some(upnp) = mapper.upnp.as_mut() {
                     if let Err(e) = self.upnp.as_ref().unwrap().renew_port(upnp).await {
-                        error!(mapper=mapper.name(), "{e}");
+                        error!(mapper = mapper.name(), "{e}");
                     }
                 }
                 if mapper.changed(&addr) {
                     let scheme = mapper.bind.scheme();
                     if let Some(upnp) = &mapper.upnp {
-                        info!(mapper=mapper.name(), "{scheme}://{} <-- upnp://{}:{} --> {scheme}://{}",
-                            mapper.local_addr(), self.upnp.as_ref().unwrap().external_ip().await.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
-                            upnp.external_port, addr);
+                        info!(
+                            mapper = mapper.name(),
+                            "{scheme}://{} <-- upnp://{}:{} --> {scheme}://{}",
+                            mapper.local_addr(),
+                            self.upnp
+                                .as_ref()
+                                .unwrap()
+                                .external_ip()
+                                .await
+                                .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+                            upnp.external_port,
+                            addr
+                        );
                     } else {
-                        info!(mapper=mapper.name(), "{scheme}://{} <--> {scheme}://{}", mapper.local_addr(), addr);
+                        info!(
+                            mapper = mapper.name(),
+                            "{scheme}://{} <--> {scheme}://{}",
+                            mapper.local_addr(),
+                            addr
+                        );
                     }
                     for md in mapper.metadata.iter() {
                         if let Some(watcher) = self.watchers.get(&md.name) {
                             if let Err(e) = watcher.new_address(&addr, md).await {
-                                error!(mapper=mapper.name(), watcher=watcher.kind(), name=&md.name, "{e}");
+                                error!(
+                                    mapper = mapper.name(),
+                                    watcher = watcher.kind(),
+                                    name = &md.name,
+                                    "{e}"
+                                );
                             }
                         }
                     }

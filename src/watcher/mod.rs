@@ -2,9 +2,9 @@ pub mod dnspod;
 pub mod http;
 
 use crate::config;
+use anyhow::Result;
 use async_trait::async_trait;
 use stun::xoraddr::XorMappedAddress;
-use anyhow::Result;
 
 /// A `Watcher` watches the update of mapped address.
 /// The watcher get notified when the mapped address is updated,
@@ -23,5 +23,7 @@ pub trait Watcher {
 
 /// Replace `{ip}` and `{port}` with the actual value.
 pub fn format_value(value: &String, addr: &XorMappedAddress) -> String {
-    value.replace("{ip}", addr.ip.to_string().as_str()).replace("{port}", addr.port.to_string().as_str())
+    value
+        .replace("{ip}", addr.ip.to_string().as_str())
+        .replace("{port}", addr.port.to_string().as_str())
 }

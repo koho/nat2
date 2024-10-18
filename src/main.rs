@@ -1,13 +1,13 @@
 mod client;
 mod config;
-mod watcher;
 mod hub;
 mod upnp;
+mod watcher;
 
-use std::env;
 use crate::hub::Hub;
 use anyhow::Result;
-use clap::{Parser};
+use clap::Parser;
+use std::env;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
