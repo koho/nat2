@@ -176,12 +176,12 @@ async fn worker(
                     loop {
                         tokio::select! {
                             Err(e) = &mut read => {
-                                error!(mapper=name, "{e}");
+                                error!(mapper = name, "{e}");
                                 break;
                             }
                             _ = interval.tick() => {
                                 if let Err(e) = writer.write(payload.as_bytes()).await {
-                                    error!(mapper=name, "{e}");
+                                    error!(mapper = name, "{e}");
                                     break;
                                 }
                                 match map_address(local_addr, &stun_addr).await {
@@ -190,7 +190,7 @@ async fn worker(
                                             return;
                                         }
                                     }
-                                    Err(e) => error!(mapper=name, "{e}")
+                                    Err(e) => error!(mapper = name, "{e}")
                                 }
                             }
                         }

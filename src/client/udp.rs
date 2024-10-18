@@ -105,7 +105,7 @@ async fn worker(
                     }
                     let mut addr = XorMappedAddress::default();
                     if let Err(e) = addr.get_from(&msg) {
-                        error!(mapper=name, "{e}");
+                        error!(mapper = name, "{e}");
                         continue;
                     }
                     if callback.send(addr).await.is_err() {
@@ -114,13 +114,13 @@ async fn worker(
                 }
                 _ = interval.tick() => {
                     if let Some(r) = req {
-                        error!(transaction_id=r.0.encode_hex::<String>(), mapper=name, "no response from stun server");
+                        error!(transaction_id = r.0.encode_hex::<String>(), mapper = name, "no response from stun server");
                     }
                     match send_request(&sock, &stun_addr).await {
                         Ok(id) => {
                             req = Some(id);
                         }
-                        Err(e) => error!(mapper=name, "{e}")
+                        Err(e) => error!(mapper = name, "{e}")
                     };
                 }
             }
