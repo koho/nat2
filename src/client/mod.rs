@@ -1,9 +1,14 @@
 use std::net::SocketAddr;
 use tokio::task::JoinHandle;
 
+/// Hole punching client.
 pub struct Client {
+    /// Name of the client.
     name: String,
+    /// Socket binding address.
+    /// The port wouldn't be zero.
     local_addr: SocketAddr,
+    /// Task handle.
     handle: JoinHandle<()>,
 }
 

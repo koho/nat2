@@ -19,6 +19,7 @@ use igd_next::PortMappingProtocol::{TCP, UDP};
 use crate::upnp::{PortMap, Upnp};
 use crate::watcher::http::Http;
 
+/// Hub manages all the port mappings and watchers.
 pub struct Hub {
     mappers: Vec<Mapper>,
     watchers: HashMap<String, Box<dyn Watcher>>,
@@ -26,11 +27,17 @@ pub struct Hub {
 }
 
 struct Mapper {
+    /// Protocol and local socket binding address.
     bind: Url,
+    /// List of watcher metadata.
     metadata: Vec<Metadata>,
+    /// NAT client.
     handle: Client,
+    /// Public IPv4 address and port.
     public: Option<String>,
+    /// UPnP mapping.
     upnp: Option<PortMap>,
+    /// Mapped address receiver.
     rx: Receiver<XorMappedAddress>,
 }
 
@@ -80,6 +87,7 @@ impl Mapper {
         })
     }
 
+    /// Return true if the new mapped address is different from the old one.
     fn changed(&mut self, addr: &XorMappedAddress) -> bool {
         let mut changed = true;
         if let Some(old_addr) = &self.public {
@@ -91,10 +99,12 @@ impl Mapper {
         changed
     }
 
+    /// Returns the original mapping name in config.
     fn name(&self) -> &str {
         self.handle.name()
     }
 
+    /// Returns the forwarded address or the socket binding address.
     fn local_addr(&self) -> SocketAddr {
         if let Some(upnp) = &self.upnp {
             upnp.forward_addr
@@ -106,24 +116,28 @@ impl Mapper {
 
 impl Hub {
     pub async fn new(cfg: Config) -> Result<Self> {
+        // Watcher list.
         let mut watchers: HashMap<String, Box<dyn Watcher>> = HashMap::new();
         for (key, value) in cfg.dnspod.into_iter() {
-            watchers.insert(key, Box::new(DnsPod::new(value.secret_id, value.secret_key)));
+            watchers.insert(key.clone(), Box::new(DnsPod::new(key, value.secret_id, value.secret_key)));
         }
         for (key, value) in cfg.http.into_iter() {
-            watchers.insert(key, Box::new(Http::new(value.url, value.method.as_str(), value.body, value.headers)?));
+            watchers.insert(key.clone(), Box::new(Http::new(key, value.url, value.method.as_str(), value.body, value.headers)?));
         }
+        // UPnP feature.
         let global_upnp = !matches!(cfg.upnp, Some(false));
         let mut upnp: Option<Upnp> = None;
         if global_upnp {
             upnp = Some(Upnp::new().await?);
         }
+        // Mapper list.
         let mut mappers = vec![];
         for (key, value) in cfg.map.into_iter() {
             let url = Url::parse(key.as_str())?;
             let ip = url.host().ok_or(anyhow!("{EmptyHost} in {key}"))?;
             let port = url.port().ok_or(anyhow!("{InvalidPort} in {key}"))?;
             let mut local_addr = format!("{ip}:{port}");
+            // Validate watcher metadata.
             for (i, md) in value.iter().enumerate() {
                 if let Some(watcher) = watchers.get(&md.name) {
                     watcher.validate(md).map_err(|e| anyhow!("{e} in {key} at index {i}"))?;
@@ -139,22 +153,22 @@ impl Hub {
                             upnp = Some(Upnp::new().await?);
                         }
                         let map = upnp.as_mut().unwrap().add_port(TCP, local_addr.parse()?).await?;
-                        local_addr = format!("0.0.0.0:{}", map.external_port);
+                        local_addr = map.local_addr();
                         pm = Some(map);
                     }
                     Mapper::new_tcp(key, local_addr, value, &cfg.tcp, pm).await?
-                },
+                }
                 "udp" | "udp+upnp" | "upnp+udp" => {
                     if url.scheme() != "udp" || global_upnp {
                         if upnp.is_none() {
                             upnp = Some(Upnp::new().await?);
                         }
                         let map = upnp.as_mut().unwrap().add_port(UDP, local_addr.parse()?).await?;
-                        local_addr = format!("0.0.0.0:{}", map.external_port);
+                        local_addr = map.local_addr();
                         pm = Some(map);
                     }
                     Mapper::new_udp(key, local_addr, value, &cfg.udp, pm).await?
-                },
+                }
                 _ => Err(anyhow!("{ErrSchemeType} {}", url.scheme()))?,
             };
             mappers.push(mapper);
@@ -193,7 +207,7 @@ impl Hub {
                     for md in mapper.metadata.iter() {
                         if let Some(watcher) = self.watchers.get(&md.name) {
                             if let Err(e) = watcher.new_address(&addr, md).await {
-                                error!(mapper=mapper.name(), watcher=watcher.name(), name=&md.name, "{e}");
+                                error!(mapper=mapper.name(), watcher=watcher.kind(), name=&md.name, "{e}");
                             }
                         }
                     }
@@ -203,13 +217,11 @@ impl Hub {
     }
 
     pub async fn close(&mut self) {
-        if let Some(upnp) = &self.upnp {
-            for mapper in self.mappers.iter_mut() {
-                if let Some(pm) = mapper.upnp.as_mut() {
-                    let _ = upnp.remove_port(pm).await;
-                }
-                mapper.handle.close();
+        for mapper in self.mappers.iter_mut() {
+            if let Some(pm) = mapper.upnp.as_mut() {
+                let _ = self.upnp.as_ref().unwrap().remove_port(pm).await;
             }
+            mapper.handle.close();
         }
     }
 }

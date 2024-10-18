@@ -8,8 +8,10 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::{self, Duration};
 use crate::client::Client;
 use anyhow::Result;
+use hex::ToHex;
 use tracing::error;
 
+/// Send a binding request to STUN server.
 async fn send_request<A: ToSocketAddrs>(sock: &UdpSocket, stun_addr: A) -> Result<TransactionId> {
     let mut msg = Message::new();
     let id = TransactionId::new();
@@ -20,13 +22,20 @@ async fn send_request<A: ToSocketAddrs>(sock: &UdpSocket, stun_addr: A) -> Resul
 }
 
 pub struct Builder {
+    /// Name of the client.
     name: String,
+    /// Request binding address.
+    /// The port may be zero.
     local_addr: String,
+    /// UDP STUN server address:port pair.
     stun_addr: String,
+    /// The interval in seconds between sending binding request messages.
     interval: u64,
+    /// Callback for receiving the mapped address.
     callback: Sender<XorMappedAddress>,
 }
 
+/// A `Builder` facilitates the creation of UDP hole punching client.
 impl Builder {
     pub fn new(name: String, local_addr: impl Into<String>, callback: Sender<XorMappedAddress>) -> Builder {
         Builder {
@@ -53,9 +62,10 @@ impl Builder {
     }
 }
 
+/// Returns a UDP hole punching client.
 async fn worker(name: String, local_addr: SocketAddr, stun_addr: String, interval: u64, callback: Sender<XorMappedAddress>) -> Result<Client> {
     let sock = UdpSocket::bind(local_addr).await?;
-    let local_addr= sock.local_addr()?;
+    let local_addr = sock.local_addr()?;
     let worker_name = name.clone();
     let handle = tokio::spawn(async move {
         let mut buf = [0; 1024];
@@ -66,10 +76,11 @@ async fn worker(name: String, local_addr: SocketAddr, stun_addr: String, interva
                 Ok((len, _)) = sock.recv_from(&mut buf) => {
                     let mut msg = Message::new();
                     let mut reader = BufReader::new(&buf[..len]);
-                    if let Err(_) = msg.read_from(&mut reader) {
+                    if msg.read_from(&mut reader).is_err() {
                         continue;
                     }
                     if let Some(r) = req {
+                        // Ignore outdated or invalid response.
                         if msg.transaction_id != r {
                             continue;
                         }
@@ -85,8 +96,8 @@ async fn worker(name: String, local_addr: SocketAddr, stun_addr: String, interva
                     }
                 }
                 _ = interval.tick() => {
-                    if req.is_some() {
-                        error!(mapper=name, "no response from stun server");
+                    if let Some(r) = req {
+                        error!(transaction_id=r.0.encode_hex::<String>(), mapper=name, "no response from stun server");
                     }
                     match send_request(&sock, &stun_addr).await {
                         Ok(id) => {
@@ -98,7 +109,7 @@ async fn worker(name: String, local_addr: SocketAddr, stun_addr: String, interva
             }
         }
     });
-    Ok(Client{
+    Ok(Client {
         name: worker_name,
         local_addr,
         handle,

@@ -16,6 +16,7 @@ use url::{Position, Url};
 use anyhow::Result;
 use tracing::{error};
 
+/// Creates a new TCP connection.
 async fn new_connection<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A) -> io::Result<TcpStream> {
     let mut last_err = None;
     for addr in lookup_host(remote_addr).await? {
@@ -37,6 +38,7 @@ async fn new_connection<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A
     }))
 }
 
+/// Read the mapped address from STUN server.
 async fn map_address<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A) -> Result<XorMappedAddress> {
     let mut stream = new_connection(local_addr, remote_addr).await?;
     let mut msg = Message::new();
@@ -56,12 +58,22 @@ async fn map_address<A: ToSocketAddrs>(local_addr: SocketAddr, remote_addr: A) -
     Ok(xor_addr)
 }
 
+/// A `Builder` facilitates the creation of TCP hole punching client.
 pub struct Builder {
+    /// Name of the client.
     name: String,
+    /// Request binding address.
+    /// The port may be zero.
     local_addr: String,
+    /// The url used to maintain a long-lived TCP connection.
     keepalive_url: String,
+    /// TCP STUN server address:port pair.
+    /// The server must support STUN over TCP protocol.
     stun_addr: String,
+    /// The interval in seconds between sending binding request messages
+    /// and fetching the keepalive url.
     interval: u64,
+    /// Callback for receiving the mapped address.
     callback: Sender<XorMappedAddress>,
 }
 
@@ -97,12 +109,14 @@ impl Builder {
     }
 }
 
+/// Returns a TCP hole punching client.
 async fn worker(name: String, local_addr: SocketAddr, keepalive_url: String, stun_addr: String, interval: u64, callback: Sender<XorMappedAddress>) -> Result<Client> {
     let url = Url::parse(keepalive_url.as_str())?;
     let mut host = url.host().ok_or(EmptyHost)?.to_string();
     let port = url.port_or_known_default().ok_or(InvalidPort)?.to_string();
     host.push_str(&url.port().map_or(String::new(), |v| format!(":{}", v.to_string())));
     let remote_addr = format!("{}:{}", host, port);
+    // Determine the local binding address and reuse it in further connections.
     let sock = TcpSocket::new_v4()?;
     sock.set_reuseaddr(true)?;
     sock.bind(local_addr)?;
@@ -148,7 +162,7 @@ async fn worker(name: String, local_addr: SocketAddr, keepalive_url: String, stu
             }
         }
     });
-    Ok(Client{
+    Ok(Client {
         name: worker_name,
         local_addr,
         handle,
