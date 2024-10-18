@@ -88,7 +88,7 @@ pub struct Metadata {
     /// Record priority.
     /// This field is required for record type SVCB and HTTPS.
     pub priority: Option<u8>,
-    /// DNS Record id.
+    /// DNS record id.
     /// This field disables the automatic creation of dns records.
     pub rid: Option<u64>,
     /// TTL to use for dns records.

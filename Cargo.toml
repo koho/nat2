@@ -2,7 +2,7 @@
 name = "nat2"
 version = "0.1.0"
 edition = "2021"
-description = "Expose your local service to Internet in NAT1 network."
+description = "Expose your local service to Internet in full cone NAT network."
 license = "MIT"
 homepage = "https://github.com/koho/nat2"
 repository = "https://github.com/koho/nat2.git"
