@@ -6,6 +6,7 @@ use igd_next::{GetExternalIpError, PortMappingProtocol, SearchError, SearchOptio
 use local_ip_address::local_ip;
 use std::net::{IpAddr, SocketAddr};
 use time::OffsetDateTime;
+use tracing::{debug, warn};
 
 /// The duration in seconds of a port mapping on the gateway.
 const MAPPING_DURATION: u32 = 3600;
@@ -14,6 +15,7 @@ const MAPPING_DURATION: u32 = 3600;
 const MAPPING_TIMEOUT: i64 = MAPPING_DURATION as i64 / 2;
 
 /// A port mapping on the gateway.
+#[derive(Debug)]
 pub struct PortMap {
     /// TCP or UDP.
     pub protocol: PortMappingProtocol,
@@ -40,6 +42,7 @@ impl Upnp {
     pub async fn new() -> Result<Self> {
         // Find the best WAN interface IPv4 address.
         let ip = local_ip()?;
+        debug!(ip = ip.to_string(), "searching gateway at interface");
         let gateway = search_gateway(SearchOptions {
             bind_addr: SocketAddr::new(ip, 0),
             ..Default::default()
@@ -47,11 +50,12 @@ impl Upnp {
         .await
         .map_err(|e| {
             if matches!(e, SearchError::NoResponseWithinTimeout) {
-                anyhow!("no available upnp server in this network")
+                anyhow!("no available upnp server in the network {ip}")
             } else {
                 Error::from(e)
             }
         })?;
+        debug!(ip = gateway.addr.to_string(), "found a gateway");
         Ok(Self {
             local_ip: ip,
             gateway,
@@ -79,6 +83,9 @@ impl Upnp {
             if matches!(e, OnlyPermanentLeasesSupported) {
                 // Gateway only supports permanent leases.
                 // Retry with a lease duration of 0.
+                warn!(
+                    "the gateway only supports permanent leases, fallback to a lease duration of 0"
+                );
                 external_port = self
                     .gateway
                     .add_any_port(protocol, forward_addr, 0, description.as_str())
@@ -86,13 +93,15 @@ impl Upnp {
                 timeout = 0;
             }
         }
-        Ok(PortMap {
+        let pm = PortMap {
             protocol,
             forward_addr,
             external_port: external_port?,
             timestamp: OffsetDateTime::now_utc().unix_timestamp(),
             timeout,
-        })
+        };
+        debug!("successfully added {:?}", pm);
+        Ok(pm)
     }
 
     /// Renew a port mapping before the ttl.
@@ -101,6 +110,7 @@ impl Upnp {
         if pm.timestamp == 0 || now - pm.timestamp < MAPPING_TIMEOUT {
             return Ok(());
         }
+        debug!("renew {:?}", pm);
         self.gateway
             .add_port(
                 pm.protocol,
