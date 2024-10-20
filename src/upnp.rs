@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{anyhow, Error, Result};
 use igd_next::aio::tokio::{search_gateway, Tokio};
 use igd_next::aio::Gateway;
 use igd_next::AddAnyPortError::OnlyPermanentLeasesSupported;
-use igd_next::{GetExternalIpError, PortMappingProtocol, SearchOptions};
+use igd_next::{GetExternalIpError, PortMappingProtocol, SearchError, SearchOptions};
 use local_ip_address::local_ip;
 use std::net::{IpAddr, SocketAddr};
 use time::OffsetDateTime;
@@ -15,9 +15,15 @@ const MAPPING_TIMEOUT: i64 = MAPPING_DURATION as i64 / 2;
 
 /// A port mapping on the gateway.
 pub struct PortMap {
+    /// TCP or UDP.
     pub protocol: PortMappingProtocol,
+    /// Gateway forwards traffics from external port to the forward address.
     pub forward_addr: SocketAddr,
+    /// The mapped external port on the gateway.
     pub external_port: u16,
+    /// The duration in seconds of a port mapping on the gateway.
+    /// Some gateway only supports permanent leases, so this value may be zero.
+    timeout: u32,
     /// Last time the port mapping is sent.
     timestamp: i64,
 }
@@ -28,9 +34,6 @@ pub struct Upnp {
     local_ip: IpAddr,
     /// UPnP interface.
     gateway: Gateway<Tokio>,
-    /// The duration in seconds of a port mapping on the gateway.
-    /// Some gateway only supports permanent leases, so this value may be changed to zero.
-    timeout: u32,
 }
 
 impl Upnp {
@@ -41,17 +44,23 @@ impl Upnp {
             bind_addr: SocketAddr::new(ip, 0),
             ..Default::default()
         })
-        .await?;
+        .await
+        .map_err(|e| {
+            if matches!(e, SearchError::NoResponseWithinTimeout) {
+                anyhow!("no available upnp server in this network")
+            } else {
+                Error::from(e)
+            }
+        })?;
         Ok(Self {
             local_ip: ip,
             gateway,
-            timeout: MAPPING_DURATION,
         })
     }
 
     /// Request a new port mapping in gateway.
     pub async fn add_port(
-        &mut self,
+        &self,
         protocol: PortMappingProtocol,
         forward_addr: SocketAddr,
     ) -> Result<PortMap> {
@@ -61,9 +70,10 @@ impl Upnp {
         if forward_addr.ip().is_unspecified() {
             forward_addr.set_ip(self.local_ip);
         }
+        let mut timeout = MAPPING_DURATION;
         let mut external_port = self
             .gateway
-            .add_any_port(protocol, forward_addr, self.timeout, description.as_str())
+            .add_any_port(protocol, forward_addr, timeout, description.as_str())
             .await;
         if let Err(ref e) = external_port {
             if matches!(e, OnlyPermanentLeasesSupported) {
@@ -73,7 +83,7 @@ impl Upnp {
                     .gateway
                     .add_any_port(protocol, forward_addr, 0, description.as_str())
                     .await;
-                self.timeout = 0;
+                timeout = 0;
             }
         }
         Ok(PortMap {
@@ -81,6 +91,7 @@ impl Upnp {
             forward_addr,
             external_port: external_port?,
             timestamp: OffsetDateTime::now_utc().unix_timestamp(),
+            timeout,
         })
     }
 
@@ -95,7 +106,7 @@ impl Upnp {
                 pm.protocol,
                 pm.external_port,
                 pm.forward_addr,
-                self.timeout,
+                pm.timeout,
                 description().as_str(),
             )
             .await?;

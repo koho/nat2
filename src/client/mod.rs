@@ -1,5 +1,10 @@
 use std::net::SocketAddr;
+use stun::xoraddr::XorMappedAddress;
+use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
+
+/// Callback for receiving the mapped address.
+pub type Callback = Sender<XorMappedAddress>;
 
 /// Hole punching client.
 pub struct Client {

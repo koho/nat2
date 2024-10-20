@@ -1,4 +1,4 @@
-use crate::client::Client;
+use crate::client::{Callback, Client};
 use anyhow::Result;
 use hex::ToHex;
 use std::io::BufReader;
@@ -7,7 +7,6 @@ use stun::agent::TransactionId;
 use stun::message::{Getter, Message, BINDING_REQUEST};
 use stun::xoraddr::XorMappedAddress;
 use tokio::net::{ToSocketAddrs, UdpSocket};
-use tokio::sync::mpsc::Sender;
 use tokio::time::{self, Duration};
 use tracing::error;
 
@@ -21,6 +20,7 @@ async fn send_request<A: ToSocketAddrs>(sock: &UdpSocket, stun_addr: A) -> Resul
     Ok(id)
 }
 
+/// A `Builder` facilitates the creation of UDP hole punching client.
 pub struct Builder {
     /// Name of the client.
     name: String,
@@ -32,16 +32,11 @@ pub struct Builder {
     /// The interval in seconds between sending binding request messages.
     interval: u64,
     /// Callback for receiving the mapped address.
-    callback: Sender<XorMappedAddress>,
+    callback: Callback,
 }
 
-/// A `Builder` facilitates the creation of UDP hole punching client.
 impl Builder {
-    pub fn new(
-        name: String,
-        local_addr: impl Into<String>,
-        callback: Sender<XorMappedAddress>,
-    ) -> Builder {
+    pub fn new(name: String, local_addr: impl Into<String>, callback: Callback) -> Builder {
         Builder {
             name,
             local_addr: local_addr.into(),
@@ -79,7 +74,7 @@ async fn worker(
     local_addr: SocketAddr,
     stun_addr: String,
     interval: u64,
-    callback: Sender<XorMappedAddress>,
+    callback: Callback,
 ) -> Result<Client> {
     let sock = UdpSocket::bind(local_addr).await?;
     let local_addr = sock.local_addr()?;

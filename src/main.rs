@@ -1,10 +1,10 @@
 mod client;
 mod config;
-mod hub;
+mod mapper;
 mod upnp;
 mod watcher;
 
-use crate::hub::Hub;
+use crate::mapper::run;
 use anyhow::Result;
 use clap::Parser;
 use std::env;
@@ -36,13 +36,9 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .with_timer(tracing_subscriber::fmt::time::time())
         .init();
-    let mut hub = Hub::new(cfg).await?;
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            info!("closing connections");
-            hub.close().await;
-        },
-        _ = hub.run() => {},
-    }
+    let mapper = run(cfg).await?;
+    tokio::signal::ctrl_c().await?;
+    info!("closing connections");
+    mapper.close().await;
     Ok(())
 }

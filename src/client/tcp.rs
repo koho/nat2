@@ -1,4 +1,4 @@
-use crate::client::Client;
+use crate::client::{Callback, Client};
 use anyhow::Result;
 use std::io;
 use std::io::BufReader;
@@ -9,7 +9,6 @@ use stun::message::{Getter, Message, BINDING_REQUEST, MAGIC_COOKIE, TRANSACTION_
 use stun::xoraddr::XorMappedAddress;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpSocket, TcpStream, ToSocketAddrs};
-use tokio::sync::mpsc::Sender;
 use tokio::time;
 use tokio::time::sleep;
 use tracing::error;
@@ -85,15 +84,11 @@ pub struct Builder {
     /// and fetching the keepalive url.
     interval: u64,
     /// Callback for receiving the mapped address.
-    callback: Sender<XorMappedAddress>,
+    callback: Callback,
 }
 
 impl Builder {
-    pub fn new(
-        name: String,
-        local_addr: impl Into<String>,
-        callback: Sender<XorMappedAddress>,
-    ) -> Builder {
+    pub fn new(name: String, local_addr: impl Into<String>, callback: Callback) -> Builder {
         Builder {
             name,
             local_addr: local_addr.into(),
@@ -139,7 +134,7 @@ async fn worker(
     keepalive_url: String,
     stun_addr: String,
     interval: u64,
-    callback: Sender<XorMappedAddress>,
+    callback: Callback,
 ) -> Result<Client> {
     let url = Url::parse(keepalive_url.as_str())?;
     let mut host = url.host().ok_or(EmptyHost)?.to_string();
