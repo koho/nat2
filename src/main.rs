@@ -24,9 +24,11 @@ struct Opt {
 #[cfg(unix)]
 async fn trap_signals() -> Result<()> {
     use tokio::signal::unix::{signal, SignalKind};
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
     tokio::select! {
-        _ = signal(SignalKind::interrupt())?.recv() => {},
-        _ = signal(SignalKind::terminate())?.recv() => {},
+        _ = sigint.recv() => {},
+        _ = sigterm.recv() => {},
     }
     Ok(())
 }
