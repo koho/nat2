@@ -21,6 +21,19 @@ struct Opt {
     debug: bool,
 }
 
+#[cfg(unix)]
+fn trap_signals() -> Result<()> {
+    use tokio::signal::unix::{signal, SignalKind};
+    tokio::select! {
+        _ = signal(SignalKind::interrupt())?.recv() => {},
+        _ = signal(SignalKind::terminate())?.recv() => {},
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+use tokio::signal::ctrl_c as trap_signals;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let opt = Opt::parse();
@@ -37,7 +50,7 @@ async fn main() -> Result<()> {
         .with_timer(tracing_subscriber::fmt::time::time())
         .init();
     let mapper = run(cfg).await?;
-    tokio::signal::ctrl_c().await?;
+    trap_signals().await?;
     info!("closing connections");
     mapper.close().await;
     Ok(())
