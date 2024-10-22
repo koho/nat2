@@ -15,6 +15,9 @@ use tracing::error;
 use url::ParseError::{EmptyHost, InvalidPort};
 use url::{Position, Url};
 
+/// The amount of time (in seconds) to wait before retrying.
+const RETRY_INTERVAL: u64 = 10;
+
 /// Creates a new TCP connection.
 async fn new_connection<A: ToSocketAddrs>(
     local_addr: SocketAddr,
@@ -139,11 +142,11 @@ async fn worker(
     let url = Url::parse(keepalive_url.as_str())?;
     let mut host = url.host().ok_or(EmptyHost)?.to_string();
     let port = url.port_or_known_default().ok_or(InvalidPort)?.to_string();
+    let remote_addr = format!("{}:{}", host, port);
     host.push_str(
         &url.port()
             .map_or(String::new(), |v| format!(":{}", v.to_string())),
     );
-    let remote_addr = format!("{}:{}", host, port);
     // Determine the local binding address and reuse it in further connections.
     let sock = TcpSocket::new_v4()?;
     sock.set_reuseaddr(true)?;
@@ -161,7 +164,7 @@ async fn worker(
             match new_connection(local_addr, &remote_addr).await {
                 Err(e) => {
                     error!(mapper = name, "{e}");
-                    sleep(Duration::from_secs(10)).await;
+                    sleep(Duration::from_secs(RETRY_INTERVAL)).await;
                 }
                 Ok(mut stream) => {
                     let (mut reader, mut writer) = stream.split();
@@ -190,6 +193,7 @@ async fn worker(
                             }
                         }
                     }
+                    sleep(Duration::from_secs(RETRY_INTERVAL)).await;
                 }
             }
         }
