@@ -163,7 +163,7 @@ async fn worker(
         loop {
             match new_connection(local_addr, &remote_addr).await {
                 Err(e) => {
-                    error!(mapper = name, "{e}");
+                    error!(op = "connect", mapper = name, "{e}");
                     sleep(Duration::from_secs(RETRY_INTERVAL)).await;
                 }
                 Ok(mut stream) => {
@@ -174,12 +174,12 @@ async fn worker(
                     loop {
                         tokio::select! {
                             Err(e) = &mut read => {
-                                error!(mapper = name, "{e}");
+                                error!(op = "read", mapper = name, "{e}");
                                 break;
                             }
                             _ = interval.tick() => {
                                 if let Err(e) = writer.write(payload.as_bytes()).await {
-                                    error!(mapper = name, "{e}");
+                                    error!(op = "write", mapper = name, "{e}");
                                     break;
                                 }
                                 match map_address(local_addr, &stun_addr).await {
@@ -188,7 +188,7 @@ async fn worker(
                                             return;
                                         }
                                     }
-                                    Err(e) => error!(mapper = name, "{e}")
+                                    Err(e) => error!(op = "stun", mapper = name, "{e}")
                                 }
                             }
                         }
