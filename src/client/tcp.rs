@@ -173,8 +173,11 @@ async fn worker(
                     let mut interval = time::interval(Duration::from_secs(interval));
                     loop {
                         tokio::select! {
-                            Err(e) = &mut read => {
-                                error!(op = "read", mapper = name, "{e}");
+                            res = &mut read => {
+                                match res {
+                                    Ok(n) => error!(op = "read", mapper = name, "connection unexpectedly closed with {n} bytes received"),
+                                    Err(e) => error!(op = "read", mapper = name, "{e}")
+                                }
                                 break;
                             }
                             _ = interval.tick() => {
