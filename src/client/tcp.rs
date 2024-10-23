@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpSocket, TcpStream, ToSocketAddrs};
 use tokio::time;
 use tokio::time::sleep;
-use tracing::error;
+use tracing::{error, warn};
 use url::ParseError::{EmptyHost, InvalidPort};
 use url::{Position, Url};
 
@@ -175,7 +175,7 @@ async fn worker(
                         tokio::select! {
                             res = &mut read => {
                                 match res {
-                                    Ok(n) => error!(op = "read", mapper = name, "connection unexpectedly closed with {n} bytes received"),
+                                    Ok(n) => warn!(op = "read", mapper = name, "connection unexpectedly closed with {n} bytes received"),
                                     Err(e) => error!(op = "read", mapper = name, "{e}")
                                 }
                                 break;
