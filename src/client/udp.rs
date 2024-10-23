@@ -41,7 +41,7 @@ impl Builder {
             name,
             local_addr: local_addr.into(),
             stun_addr: "stun.chat.bilibili.com:3478".to_string(),
-            interval: 50,
+            interval: 20,
             callback,
         }
     }
