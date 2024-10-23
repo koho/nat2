@@ -95,7 +95,7 @@ impl Builder {
         Builder {
             name,
             local_addr: local_addr.into(),
-            keepalive_url: "http://connectivitycheck.platform.hicloud.com/generate_204".to_string(),
+            keepalive_url: "http://www.baidu.com".to_string(),
             stun_addr: "stun.xiaoyaoyou.xyz:3478".to_string(),
             interval: 50,
             callback,
