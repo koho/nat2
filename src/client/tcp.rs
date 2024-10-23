@@ -156,7 +156,7 @@ async fn worker(
     let handle = tokio::spawn(async move {
         let mut discard = tokio::io::empty();
         let payload = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n",
+            "HEAD {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n",
             &url[Position::BeforePath..],
             host
         );
