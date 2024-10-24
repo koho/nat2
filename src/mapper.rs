@@ -4,6 +4,7 @@ use crate::config::{Config, Tcp, Udp};
 use crate::upnp::{PortMap, Upnp};
 use crate::watcher::dnspod::DnsPod;
 use crate::watcher::http::Http;
+use crate::watcher::script::Script;
 use crate::watcher::Watcher;
 use anyhow::{anyhow, Result};
 use futures::future::join_all;
@@ -149,6 +150,12 @@ pub async fn run(cfg: Config) -> Result<Closer> {
                 value.body,
                 value.headers,
             )?),
+        );
+    }
+    for (key, value) in cfg.script.into_iter() {
+        watcher_map.insert(
+            key.clone(),
+            Arc::new(Script::new(key, value.path, value.args)),
         );
     }
     // UPnP feature.

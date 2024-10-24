@@ -1,5 +1,6 @@
 pub mod dnspod;
 pub mod http;
+pub mod script;
 
 use crate::config;
 use anyhow::Result;

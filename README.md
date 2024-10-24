@@ -1,6 +1,7 @@
 # nat2
 
-nat2 simply means "nat to". It is a tool that helps you expose local services to the Internet in a Full-Cone NAT network. Moreover, you can bind the mapped address automatically to your DNS provider or send it via HTTP request.
+nat2 simply means "nat to". It is a tool that helps you expose local services to the Internet in a Full-Cone NAT
+network. Moreover, you can bind the mapped address automatically to your DNS provider or send it via HTTP request.
 
 ## Features
 
@@ -100,6 +101,45 @@ HTTP request is a common solution for sending event. The request is fully config
 }
 ```
 
+### Script
+
+Run a script or program.
+
+| Field | Type     | Description                                                                                                                                     |
+|-------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| path  | string   | Path to executable file.                                                                                                                        |
+| args  | []string | Arguments to pass to the program. If the `value` field in watcher metadata is not empty, it will be passed to the program as the last argument. |
+
+For example, we have a python script named `test.py`:
+
+```python
+import sys
+assert sys.argv[1] == "x.x.x.x:22274"
+```
+
+And our config file:
+
+```json
+{
+  "map": {
+    "udp://0.0.0.0:5555": [
+      {
+        "name": "example",
+        "value": "{ip}:{port}"
+      }
+    ]
+  },
+  "script": {
+    "example": {
+      "path": "python",
+      "args": [
+        "test.py"
+      ]
+    }
+  }
+}
+```
+
 ## Global options
 
 ### TCP mapping
@@ -116,7 +156,7 @@ The following config is the default value:
 {
   "tcp": {
     "stun": "stun.xiaoyaoyou.xyz:3478",
-    "keepalive": "http://connectivitycheck.platform.hicloud.com/generate_204",
+    "keepalive": "http://www.baidu.com",
     "interval": 50
   }
 }
@@ -135,14 +175,15 @@ The following config is the default value:
 {
   "udp": {
     "stun": "stun.chat.bilibili.com:3478",
-    "interval": 50
+    "interval": 20
   }
 }
 ```
 
 ### UPnP
 
-Whether to use UPnP feature. Default is true. You can also use scheme `tcp+upnp://` or `udp+upnp://` to enable UPnP for specific mapping.
+Whether to use UPnP feature. Default is true. You can also use scheme `tcp+upnp://` or `udp+upnp://` to enable UPnP for
+specific mapping.
 
 The following config is the default value:
 
@@ -152,7 +193,8 @@ The following config is the default value:
 }
 ```
 
-If UPnP is not available in your local network. You must turn off this option and manually add port forwarding rules in the gateway for the mapping to work properly. For example, we have a TCP mapping.
+If UPnP is not available in your local network. You must turn off this option and manually add port forwarding rules in
+the gateway for the mapping to work properly. For example, we have a TCP mapping.
 
 ```json
 {
@@ -173,7 +215,8 @@ Now the endpoint 192.168.1.55:443 should be accessible via public mapped address
 
 ## Run
 
-The default config file path is `config.json` in the current directory. You can also use argument `-c /path/to/your/config` to specify the config file path.
+The default config file path is `config.json` in the current directory. You can also use
+argument `-c /path/to/your/config` to specify the config file path.
 
 For example, run the service with the following command:
 

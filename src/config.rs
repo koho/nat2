@@ -23,6 +23,9 @@ pub struct Config {
     /// Configuration for HTTP watcher.
     #[serde(default)]
     pub http: HashMap<String, Http>,
+    /// Configuration for script watcher.
+    #[serde(default)]
+    pub script: HashMap<String, Script>,
 }
 
 /// Configuration for DNSPod provider.
@@ -47,6 +50,18 @@ pub struct Http {
     /// For example, `Content-Type` should be set based on the content in the `body`.
     #[serde(default)]
     pub headers: HashMap<String, String>,
+}
+
+/// Configuration for script.
+#[derive(Deserialize)]
+pub struct Script {
+    /// Path to executable file.
+    pub path: String,
+    /// Arguments to pass to the program.
+    /// If the `value` field in watcher metadata is not empty, it
+    /// will be passed to the program as the last argument.
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 /// TCP mapping global options.
