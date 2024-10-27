@@ -42,8 +42,8 @@ impl Mapper {
     ) -> Result<Mapper> {
         let mut c = client::tcp::Builder::new(name, local_addr.clone(), callback);
         if let Some(opt) = option {
-            if let Some(addr) = &opt.stun {
-                c = c.stun_addr(addr);
+            if let Some(addrs) = &opt.stun {
+                c = c.stun_addrs(addrs);
             }
             if let Some(url) = &opt.keepalive {
                 c = c.keepalive_url(url);
@@ -67,8 +67,8 @@ impl Mapper {
     ) -> Result<Mapper> {
         let mut c = client::udp::Builder::new(name, local_addr.clone(), callback);
         if let Some(opt) = option {
-            if let Some(addr) = &opt.stun {
-                c = c.stun_addr(addr);
+            if let Some(addrs) = &opt.stun {
+                c = c.stun_addrs(addrs);
             }
             if let Some(sec) = opt.interval {
                 c = c.interval(sec);

@@ -20,47 +20,29 @@ async fn send_request<A: ToSocketAddrs>(sock: &UdpSocket, stun_addr: A) -> Resul
     Ok(id)
 }
 
-/// A `Builder` facilitates the creation of UDP hole punching client.
-pub struct Builder {
-    /// Name of the client.
-    name: String,
-    /// Request binding address.
-    /// The port may be zero.
-    local_addr: String,
-    /// UDP STUN server address:port pair.
-    stun_addr: String,
-    /// The interval in seconds between sending binding request messages.
-    interval: u64,
-    /// Callback for receiving the mapped address.
-    callback: Callback,
-}
+builder!(Builder {});
 
 impl Builder {
     pub fn new(name: String, local_addr: impl Into<String>, callback: Callback) -> Builder {
         Builder {
             name,
             local_addr: local_addr.into(),
-            stun_addr: "stun.chat.bilibili.com:3478".to_string(),
+            stun_addrs: str2vec!(
+                "stun.chat.bilibili.com:3478",
+                "stun.douyucdn.cn:18000",
+                "stun.hitv.com:3478",
+                "stun.miwifi.com:3478"
+            ),
             interval: 20,
             callback,
         }
-    }
-
-    pub fn stun_addr(mut self, addr: impl Into<String>) -> Self {
-        self.stun_addr = addr.into();
-        self
-    }
-
-    pub fn interval(mut self, interval: u64) -> Self {
-        self.interval = interval;
-        self
     }
 
     pub async fn build(self) -> Result<Client> {
         worker(
             self.name,
             self.local_addr.parse()?,
-            self.stun_addr.to_string(),
+            self.stun_addrs,
             self.interval,
             self.callback,
         )
@@ -72,7 +54,7 @@ impl Builder {
 async fn worker(
     name: String,
     local_addr: SocketAddr,
-    stun_addr: String,
+    stun_addrs: Vec<String>,
     interval: u64,
     callback: Callback,
 ) -> Result<Client> {
@@ -83,12 +65,19 @@ async fn worker(
         let mut buf = [0; 1024];
         let mut req: Option<TransactionId> = None;
         let mut interval = time::interval(Duration::from_secs(interval));
+        let mut i = 0;
+        let mut first_request = true;
+        let mut stun_addr = stun_addrs.get(i).unwrap();
         loop {
             tokio::select! {
                 Ok((len, _)) = sock.recv_from(&mut buf) => {
+                    if req.is_none() {
+                        continue;
+                    }
                     let mut msg = Message::new();
                     let mut reader = BufReader::new(&buf[..len]);
-                    if msg.read_from(&mut reader).is_err() {
+                    if let Err(e) = msg.read_from(&mut reader) {
+                        error!(stun = stun_addr, mapper = name, "{e}");
                         continue;
                     }
                     if let Some(r) = req {
@@ -100,7 +89,12 @@ async fn worker(
                     }
                     let mut addr = XorMappedAddress::default();
                     if let Err(e) = addr.get_from(&msg) {
-                        error!(mapper = name, "{e}");
+                        error!(
+                            transaction_id = msg.transaction_id.0.encode_hex::<String>(),
+                            stun = stun_addr,
+                            mapper = name,
+                            "{e}"
+                        );
                         continue;
                     }
                     if callback.send(addr).await.is_err() {
@@ -109,13 +103,24 @@ async fn worker(
                 }
                 _ = interval.tick() => {
                     if let Some(r) = req {
-                        error!(transaction_id = r.0.encode_hex::<String>(), mapper = name, "no response from stun server");
+                        error!(
+                            transaction_id = r.0.encode_hex::<String>(),
+                            stun = stun_addr,
+                            mapper = name,
+                            "no response from stun server"
+                        );
                     }
-                    match send_request(&sock, &stun_addr).await {
+                    if first_request {
+                        first_request = false;
+                    } else {
+                        i = (i + 1) % stun_addrs.len();
+                        stun_addr = stun_addrs.get(i).unwrap();
+                    }
+                    match send_request(&sock, stun_addr).await {
                         Ok(id) => {
                             req = Some(id);
                         }
-                        Err(e) => error!(mapper = name, "{e}")
+                        Err(e) => error!(stun = stun_addr, mapper = name, "{e}")
                     };
                 }
             }

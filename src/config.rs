@@ -83,9 +83,10 @@ pub struct Script {
 /// TCP mapping global options.
 #[derive(Deserialize)]
 pub struct Tcp {
-    /// TCP STUN server address:port pair.
+    /// TCP STUN server address:port pairs.
     /// The server must support STUN over TCP protocol.
-    pub stun: Option<String>,
+    /// It selects hosts based on round-robin ordering.
+    pub stun: Option<Vec<String>>,
     /// Internet connectivity check url. Only HTTP protocol is supported.
     /// We will periodically fetch this url to maintain a long-lived TCP connection.
     pub keepalive: Option<String>,
@@ -97,8 +98,9 @@ pub struct Tcp {
 /// UDP mapping global options.
 #[derive(Deserialize)]
 pub struct Udp {
-    /// UDP STUN server address:port pair.
-    pub stun: Option<String>,
+    /// UDP STUN server address:port pairs.
+    /// It selects hosts based on round-robin ordering.
+    pub stun: Option<Vec<String>>,
     /// The interval in seconds between sending binding request messages.
     pub interval: Option<u64>,
 }

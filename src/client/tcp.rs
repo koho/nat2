@@ -71,24 +71,10 @@ async fn map_address<A: ToSocketAddrs>(
     Ok(xor_addr)
 }
 
-/// A `Builder` facilitates the creation of TCP hole punching client.
-pub struct Builder {
-    /// Name of the client.
-    name: String,
-    /// Request binding address.
-    /// The port may be zero.
-    local_addr: String,
+builder!(Builder {
     /// The url used to maintain a long-lived TCP connection.
-    keepalive_url: String,
-    /// TCP STUN server address:port pair.
-    /// The server must support STUN over TCP protocol.
-    stun_addr: String,
-    /// The interval in seconds between sending binding request messages
-    /// and fetching the keepalive url.
-    interval: u64,
-    /// Callback for receiving the mapped address.
-    callback: Callback,
-}
+    keepalive_url: String
+});
 
 impl Builder {
     pub fn new(name: String, local_addr: impl Into<String>, callback: Callback) -> Builder {
@@ -96,7 +82,7 @@ impl Builder {
             name,
             local_addr: local_addr.into(),
             keepalive_url: "http://www.baidu.com".to_string(),
-            stun_addr: "stun.xiaoyaoyou.xyz:3478".to_string(),
+            stun_addrs: str2vec!("turn.cloud-rtc.com:80", "stun.xiaoyaoyou.xyz:3478"),
             interval: 50,
             callback,
         }
@@ -107,22 +93,12 @@ impl Builder {
         self
     }
 
-    pub fn stun_addr(mut self, addr: impl Into<String>) -> Self {
-        self.stun_addr = addr.into();
-        self
-    }
-
-    pub fn interval(mut self, interval: u64) -> Self {
-        self.interval = interval;
-        self
-    }
-
     pub async fn build(self) -> Result<Client> {
         worker(
             self.name,
             self.local_addr.parse()?,
             self.keepalive_url.to_string(),
-            self.stun_addr.to_string(),
+            self.stun_addrs,
             self.interval,
             self.callback,
         )
@@ -135,7 +111,7 @@ async fn worker(
     name: String,
     local_addr: SocketAddr,
     keepalive_url: String,
-    stun_addr: String,
+    stun_addrs: Vec<String>,
     interval: u64,
     callback: Callback,
 ) -> Result<Client> {
@@ -161,6 +137,7 @@ async fn worker(
             host
         );
         loop {
+            let mut i = 0;
             match new_connection(local_addr, &remote_addr).await {
                 Err(e) => {
                     error!(op = "connect", mapper = name, "{e}");
@@ -185,14 +162,16 @@ async fn worker(
                                     error!(op = "write", mapper = name, "{e}");
                                     break;
                                 }
-                                match map_address(local_addr, &stun_addr).await {
+                                let stun_addr = stun_addrs.get(i).unwrap();
+                                match map_address(local_addr, stun_addr).await {
                                     Ok(addr) => {
                                         if callback.send(addr).await.is_err() {
                                             return;
                                         }
                                     }
-                                    Err(e) => error!(op = "stun", mapper = name, "{e}")
+                                    Err(e) => error!(op = "stun", stun = stun_addr, mapper = name, "{e}")
                                 }
+                                i = (i + 1) % stun_addrs.len();
                             }
                         }
                     }

@@ -165,18 +165,21 @@ And our config file:
 
 ### TCP mapping
 
-| Field     | Type   | Description                                                                                                                                    |
-|-----------|--------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| stun      | string | TCP STUN server address:port pair. The server must support STUN over TCP protocol.                                                             |
-| keepalive | string | Internet connectivity check url. Only HTTP protocol is supported. We will periodically fetch this url to maintain a long-lived TCP connection. |
-| interval  | int    | The interval in seconds between sending binding request messages and fetching the keepalive url.                                               |
+| Field     | Type     | Description                                                                                                                                    |
+|-----------|----------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| stun      | []string | TCP STUN server address:port pairs. The server must support STUN over TCP protocol. It selects hosts based on round-robin ordering.            |
+| keepalive | string   | Internet connectivity check url. Only HTTP protocol is supported. We will periodically fetch this url to maintain a long-lived TCP connection. |
+| interval  | int      | The interval in seconds between sending binding request messages and fetching the keepalive url.                                               |
 
 The following config is the default value:
 
 ```json
 {
   "tcp": {
-    "stun": "stun.xiaoyaoyou.xyz:3478",
+    "stun": [
+      "turn.cloud-rtc.com:80",
+      "stun.xiaoyaoyou.xyz:3478"
+    ],
     "keepalive": "http://www.baidu.com",
     "interval": 50
   }
@@ -185,17 +188,22 @@ The following config is the default value:
 
 ### UDP mapping
 
-| Field    | Type   | Description                                                       |
-|----------|--------|-------------------------------------------------------------------|
-| stun     | string | UDP STUN server address:port pair.                                |
-| interval | int    | The interval in seconds between sending binding request messages. |
+| Field    | Type     | Description                                                                         |
+|----------|----------|-------------------------------------------------------------------------------------|
+| stun     | []string | UDP STUN server address:port pairs. It selects hosts based on round-robin ordering. |
+| interval | int      | The interval in seconds between sending binding request messages.                   |
 
 The following config is the default value:
 
 ```json
 {
   "udp": {
-    "stun": "stun.chat.bilibili.com:3478",
+    "stun": [
+      "stun.chat.bilibili.com:3478",
+      "stun.douyucdn.cn:18000",
+      "stun.hitv.com:3478",
+      "stun.miwifi.com:3478"
+    ],
     "interval": 20
   }
 }
