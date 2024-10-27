@@ -1,5 +1,5 @@
 use crate::config::Metadata;
-use crate::watcher::{format_value, Watcher};
+use crate::watcher::{dns, format_value, Watcher};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use hex::ToHex;
@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use stun::xoraddr::XorMappedAddress;
 use time::OffsetDateTime;
 use tracing::debug;
-use url::ParseError::InvalidDomainCharacter;
 
 const HOST: &str = "dnspod.tencentcloudapi.com";
 
@@ -19,7 +18,9 @@ pub struct DnsPod {
     name: String,
     /// Request url.
     url: String,
+    /// Similar to username.
     secret_id: String,
+    /// Similar to password.
     secret_key: String,
 }
 
@@ -105,20 +106,6 @@ struct DescribeRecordListResponse {
     common: BaseResponse,
     #[serde(rename = "RecordList")]
     record_list: Option<Vec<DescribeRecordListResponseItem>>,
-}
-
-/// Split domain name into host record and SLD.
-fn split_domain_name(domain: String) -> Option<(String, String)> {
-    let mut labels: Vec<_> = domain.split(".").collect();
-    if let Some(&"") = labels.last() {
-        labels.remove(labels.len() - 1);
-    }
-    if labels.len() < 2 || labels.last()?.is_empty() || labels.get(labels.len() - 2)?.is_empty() {
-        return None;
-    }
-    let domain = &labels[labels.len() - 2..];
-    let subdomain = &labels[..labels.len() - 2];
-    Some((domain.join("."), subdomain.join(".")))
 }
 
 impl BaseResponse {
@@ -318,10 +305,10 @@ impl Watcher for DnsPod {
     }
 
     async fn new_address(&self, addr: &XorMappedAddress, md: &Metadata) -> Result<()> {
-        let domain = md.domain.clone().unwrap();
+        let domain = md.domain.as_ref().unwrap();
         let record_type = md.kind.clone().unwrap();
-        let (domain, subdomain) = split_domain_name(domain).unwrap();
-        let mut record_id: Option<u64> = md.rid;
+        let (domain, subdomain) = dns::split_domain_name(domain).unwrap();
+        let mut record_id: Option<u64> = md.rid.as_ref().map(|v| v.parse().unwrap());
         if record_id.is_none() {
             record_id = self
                 .get_record_id(domain.clone(), subdomain.clone(), record_type.clone())
@@ -349,16 +336,10 @@ impl Watcher for DnsPod {
     }
 
     fn validate(&self, md: &Metadata) -> Result<()> {
-        let domain = md.domain.clone().ok_or(anyhow!("missing field `domain`"))?;
-        let record_type = md
-            .kind
-            .clone()
-            .ok_or(anyhow!("missing field `type`"))?
-            .to_lowercase();
-        if (record_type == "svcb" || record_type == "https") && md.priority.is_none() {
-            return Err(anyhow!("missing field `priority`"));
+        dns::validate(md)?;
+        if let Some(rid) = &md.rid {
+            rid.parse::<u64>()?;
         }
-        split_domain_name(domain).ok_or(InvalidDomainCharacter)?;
         Ok(())
     }
 }

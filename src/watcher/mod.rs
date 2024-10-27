@@ -1,3 +1,4 @@
+pub mod alidns;
 pub mod dnspod;
 pub mod http;
 pub mod script;
@@ -27,4 +28,42 @@ pub fn format_value(value: &String, addr: &XorMappedAddress) -> String {
     value
         .replace("{ip}", addr.ip.to_string().as_str())
         .replace("{port}", addr.port.to_string().as_str())
+}
+
+pub mod dns {
+    use anyhow::anyhow;
+    use url::ParseError::InvalidDomainCharacter;
+
+    /// Validate basic DNS metadata.
+    pub fn validate(md: &super::config::Metadata) -> super::Result<()> {
+        let domain = md
+            .domain
+            .as_ref()
+            .ok_or(anyhow!("missing field `domain`"))?;
+        let record_type = md
+            .kind
+            .as_ref()
+            .ok_or(anyhow!("missing field `type`"))?
+            .to_lowercase();
+        if (record_type == "svcb" || record_type == "https") && md.priority.is_none() {
+            return Err(anyhow!("missing field `priority`"));
+        }
+        split_domain_name(domain).ok_or(InvalidDomainCharacter)?;
+        Ok(())
+    }
+
+    /// Split domain name into host record and SLD.
+    pub fn split_domain_name(domain: &String) -> Option<(String, String)> {
+        let mut labels: Vec<_> = domain.split(".").collect();
+        if let Some(&"") = labels.last() {
+            labels.remove(labels.len() - 1);
+        }
+        let len = labels.len();
+        if len < 2 || labels.last()?.is_empty() || labels.get(len - 2)?.is_empty() {
+            return None;
+        }
+        let domain = &labels[len - 2..];
+        let subdomain = &labels[..len - 2];
+        Some((domain.join("."), subdomain.join(".")))
+    }
 }

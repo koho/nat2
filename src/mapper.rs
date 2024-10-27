@@ -2,6 +2,7 @@ use crate::client;
 use crate::client::{Callback, Client};
 use crate::config::{Config, Tcp, Udp};
 use crate::upnp::{PortMap, Upnp};
+use crate::watcher::alidns::AliDNS;
 use crate::watcher::dnspod::DnsPod;
 use crate::watcher::http::Http;
 use crate::watcher::script::Script;
@@ -131,33 +132,29 @@ impl Closer {
     }
 }
 
+/// Merge different watchers into a single hashmap.
+macro_rules! map_watcher {
+    ($($bind:pat = $cfg:expr => $watcher:expr),*) => {{
+        let mut watchers: HashMap<String, Arc<dyn Watcher + Send + Sync>> = HashMap::new();
+        $(
+            for (key, value) in $cfg.into_iter() {
+                let name = key.clone();
+                let $bind = (key, value);
+                watchers.insert(name, Arc::new($watcher));
+            }
+        )*
+        watchers
+    }};
+}
+
 pub async fn run(cfg: Config) -> Result<Closer> {
     // Watcher list.
-    let mut watcher_map: HashMap<String, Arc<dyn Watcher + Send + Sync>> = HashMap::new();
-    for (key, value) in cfg.dnspod.into_iter() {
-        watcher_map.insert(
-            key.clone(),
-            Arc::new(DnsPod::new(key, value.secret_id, value.secret_key)),
-        );
-    }
-    for (key, value) in cfg.http.into_iter() {
-        watcher_map.insert(
-            key.clone(),
-            Arc::new(Http::new(
-                key,
-                value.url,
-                value.method.as_str(),
-                value.body,
-                value.headers,
-            )?),
-        );
-    }
-    for (key, value) in cfg.script.into_iter() {
-        watcher_map.insert(
-            key.clone(),
-            Arc::new(Script::new(key, value.path, value.args)),
-        );
-    }
+    let watcher_map = map_watcher!(
+        (key, value) = cfg.dnspod => DnsPod::new(key, value.secret_id, value.secret_key),
+        (key, value) = cfg.http => Http::new(key, value.url, value.method.as_str(), value.body, value.headers)?,
+        (key, value) = cfg.script => Script::new(key, value.path, value.args),
+        (key, value) = cfg.alidns => AliDNS::new(key, value.secret_id, value.secret_key, value.url)?
+    );
     // UPnP feature.
     let global_upnp = !matches!(cfg.upnp, Some(false));
     let upnp = if global_upnp || cfg.map.keys().any(upnp_enabled) {

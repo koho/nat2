@@ -20,6 +20,9 @@ pub struct Config {
     /// Configuration for DNSPod provider watcher.
     #[serde(default)]
     pub dnspod: HashMap<String, DnsPod>,
+    /// Configuration for AliDNS provider watcher.
+    #[serde(default)]
+    pub alidns: HashMap<String, AliDNS>,
     /// Configuration for HTTP watcher.
     #[serde(default)]
     pub http: HashMap<String, Http>,
@@ -31,7 +34,20 @@ pub struct Config {
 /// Configuration for DNSPod provider.
 #[derive(Deserialize)]
 pub struct DnsPod {
+    /// Similar to username.
     pub secret_id: String,
+    /// Similar to password.
+    pub secret_key: String,
+}
+
+/// Configuration for AliDNS provider.
+#[derive(Deserialize)]
+pub struct AliDNS {
+    /// The request URL may vary by region.
+    pub url: Option<String>,
+    /// Similar to username.
+    pub secret_id: String,
+    /// Similar to password.
     pub secret_key: String,
 }
 
@@ -105,7 +121,7 @@ pub struct Metadata {
     pub priority: Option<u8>,
     /// DNS record id.
     /// This field disables the automatic creation of dns records.
-    pub rid: Option<u64>,
+    pub rid: Option<String>,
     /// TTL to use for dns records.
     pub ttl: Option<u32>,
 }
