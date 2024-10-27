@@ -2,7 +2,7 @@ use crate::client;
 use crate::client::{Callback, Client};
 use crate::config::{Config, Tcp, Udp};
 use crate::upnp::{PortMap, Upnp};
-use crate::watcher::alidns::AliDNS;
+use crate::watcher::alidns::AliDns;
 use crate::watcher::dnspod::DnsPod;
 use crate::watcher::http::Http;
 use crate::watcher::script::Script;
@@ -153,7 +153,7 @@ pub async fn run(cfg: Config) -> Result<Closer> {
         (key, value) = cfg.dnspod => DnsPod::new(key, value.secret_id, value.secret_key),
         (key, value) = cfg.http => Http::new(key, value.url, value.method.as_str(), value.body, value.headers)?,
         (key, value) = cfg.script => Script::new(key, value.path, value.args),
-        (key, value) = cfg.alidns => AliDNS::new(key, value.secret_id, value.secret_key, value.url)?
+        (key, value) = cfg.alidns => AliDns::new(key, value.secret_id, value.secret_key, value.url)?
     );
     // UPnP feature.
     let global_upnp = !matches!(cfg.upnp, Some(false));

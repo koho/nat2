@@ -15,7 +15,7 @@ use url::ParseError::EmptyHost;
 use url::Url;
 
 /// [AliDNS](https://www.alidns.com).
-pub struct AliDNS {
+pub struct AliDns {
     /// Instance name.
     name: String,
     /// Request url.
@@ -132,7 +132,7 @@ macro_rules! http_host {
     }};
 }
 
-impl AliDNS {
+impl AliDns {
     pub fn new(
         name: String,
         secret_id: String,
@@ -321,7 +321,7 @@ impl AliDNS {
 }
 
 #[async_trait]
-impl Watcher for AliDNS {
+impl Watcher for AliDns {
     fn kind(&self) -> &'static str {
         "alidns"
     }

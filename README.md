@@ -75,6 +75,27 @@ secret key from DNSPod.
 }
 ```
 
+### AliDNS
+
+Alibaba DNS is a managed DNS providers.
+
+| Field      | Type   | Description                                                                                                         |
+|------------|--------|---------------------------------------------------------------------------------------------------------------------|
+| url        | string | The request URL may vary by region. See https://api.aliyun.com/product/Alidns. Default is https://dns.aliyuncs.com. |
+| secret_id  | string | Similar to username.                                                                                                |
+| secret_key | string | Similar to password.                                                                                                |
+
+```json
+{
+  "alidns": {
+    "example": {
+      "secret_id": "",
+      "secret_key": ""
+    }
+  }
+}
+```
+
 ### HTTP
 
 HTTP request is a common solution for sending event. The request is fully configurable.
