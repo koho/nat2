@@ -177,7 +177,6 @@ The following config is the default value:
 {
   "tcp": {
     "stun": [
-      "turn.cloud-rtc.com:80",
       "stun.xiaoyaoyou.xyz:3478"
     ],
     "keepalive": "http://www.baidu.com",

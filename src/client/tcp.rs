@@ -82,7 +82,7 @@ impl Builder {
             name,
             local_addr: local_addr.into(),
             keepalive_url: "http://www.baidu.com".to_string(),
-            stun_addrs: str2vec!("turn.cloud-rtc.com:80", "stun.xiaoyaoyou.xyz:3478"),
+            stun_addrs: str2vec!("stun.xiaoyaoyou.xyz:3478"),
             interval: 50,
             callback,
         }
