@@ -46,8 +46,8 @@ jobs:
 
       - name: Compress files
         run: |
-          tar -czvf nat2-${{ steps.get_version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz ./nat2
-          zip nat2-${{ steps.get_version.outputs.version }}-x86_64-pc-windows-msvc.zip ./nat2.exe
+          tar -czvf nat2-${{ steps.get_version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz ./assets-linux/nat2
+          zip nat2-${{ steps.get_version.outputs.version }}-x86_64-pc-windows-msvc.zip ./assets-windows/nat2.exe
 
       - name: Upload release assets
         uses: shogo82148/actions-upload-release-asset@v1
