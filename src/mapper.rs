@@ -51,6 +51,9 @@ impl Mapper {
             if let Some(sec) = opt.interval {
                 c = c.interval(sec);
             }
+            if let Some(sec) = opt.stun_interval {
+                c = c.stun_interval(sec);
+            }
         }
         Ok(Mapper {
             protocol: "tcp",

@@ -165,11 +165,12 @@ And our config file:
 
 ### TCP mapping
 
-| Field     | Type     | Description                                                                                                                                    |
-|-----------|----------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| stun      | []string | TCP STUN server address:port pairs. The server must support STUN over TCP protocol. It selects hosts based on round-robin ordering.            |
-| keepalive | string   | Internet connectivity check url. Only HTTP protocol is supported. We will periodically fetch this url to maintain a long-lived TCP connection. |
-| interval  | int      | The interval in seconds between sending binding request messages and fetching the keepalive url.                                               |
+| Field         | Type     | Description                                                                                                                                    |
+|---------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| stun          | []string | TCP STUN server address:port pairs. The server must support STUN over TCP protocol. It selects hosts based on round-robin ordering.            |
+| keepalive     | string   | Internet connectivity check url. Only HTTP protocol is supported. We will periodically fetch this url to maintain a long-lived TCP connection. |
+| interval      | int      | The interval in seconds between fetching the keepalive url.                                                                                    |
+| stun_interval | int      | The interval in seconds between sending binding request messages.                                                                              |
 
 The following config is the default value:
 
@@ -177,10 +178,11 @@ The following config is the default value:
 {
   "tcp": {
     "stun": [
-      "stun.xiaoyaoyou.xyz:3478"
+      "turn.cloud-rtc.com:80"
     ],
     "keepalive": "http://www.baidu.com",
-    "interval": 50
+    "interval": 50,
+    "stun_interval": 300
   }
 }
 ```

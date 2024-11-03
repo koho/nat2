@@ -9,6 +9,7 @@ use stun::message::{Getter, Message, BINDING_REQUEST, MAGIC_COOKIE, TRANSACTION_
 use stun::xoraddr::XorMappedAddress;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpSocket, TcpStream, ToSocketAddrs};
+use tokio::sync::mpsc::channel;
 use tokio::time;
 use tokio::time::sleep;
 use tracing::{error, warn};
@@ -73,7 +74,9 @@ async fn map_address<A: ToSocketAddrs>(
 
 builder!(Builder {
     /// The url used to maintain a long-lived TCP connection.
-    keepalive_url: String
+    keepalive_url: String,
+    /// The interval in seconds between sending binding request messages.
+    stun_interval: u64
 });
 
 impl Builder {
@@ -82,14 +85,22 @@ impl Builder {
             name,
             local_addr: local_addr.into(),
             keepalive_url: "http://www.baidu.com".to_string(),
-            stun_addrs: str2vec!("stun.xiaoyaoyou.xyz:3478"),
+            stun_addrs: str2vec!("turn.cloud-rtc.com:80"),
             interval: 50,
+            stun_interval: 300,
             callback,
         }
     }
 
     pub fn keepalive_url(mut self, url: impl Into<String>) -> Self {
         self.keepalive_url = url.into();
+        self
+    }
+
+    pub fn stun_interval(mut self, interval: u64) -> Self {
+        if interval > 0 {
+            self.stun_interval = interval;
+        }
         self
     }
 
@@ -100,6 +111,7 @@ impl Builder {
             self.keepalive_url.to_string(),
             self.stun_addrs,
             self.interval,
+            self.stun_interval,
             self.callback,
         )
         .await
@@ -113,6 +125,7 @@ async fn worker(
     keepalive_url: String,
     stun_addrs: Vec<String>,
     interval: u64,
+    stun_interval: u64,
     callback: Callback,
 ) -> Result<Client> {
     let url = Url::parse(keepalive_url.as_str())?;
@@ -129,7 +142,25 @@ async fn worker(
     sock.bind(local_addr)?;
     let local_addr = sock.local_addr()?;
     let worker_name = name.clone();
-    let handle = tokio::spawn(async move {
+    let stun_name = name.clone();
+    let (tx, mut rx) = channel(1);
+    let stun_handle = tokio::spawn(async move {
+        let mut i = 0;
+        loop {
+            rx.recv().await;
+            let stun_addr = stun_addrs.get(i).unwrap();
+            match map_address(local_addr, stun_addr).await {
+                Ok(addr) => {
+                    if callback.send(addr).await.is_err() {
+                        return;
+                    }
+                }
+                Err(e) => error!(op = "stun", stun = stun_addr, mapper = stun_name, "{e}"),
+            }
+            i = (i + 1) % stun_addrs.len();
+        }
+    });
+    let worker_handle = tokio::spawn(async move {
         let mut discard = tokio::io::empty();
         let payload = format!(
             "HEAD {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n",
@@ -137,10 +168,9 @@ async fn worker(
             host
         );
         loop {
-            let mut i = 0;
             match new_connection(local_addr, &remote_addr).await {
                 Err(e) => {
-                    error!(op = "connect", mapper = name, "{e}");
+                    error!(op = "connect", mapper = worker_name, "{e}");
                     sleep(Duration::from_secs(RETRY_INTERVAL)).await;
                 }
                 Ok(mut stream) => {
@@ -148,30 +178,28 @@ async fn worker(
                     let read = tokio::io::copy(&mut reader, &mut discard);
                     tokio::pin!(read);
                     let mut interval = time::interval(Duration::from_secs(interval));
+                    let mut stun = time::interval(Duration::from_secs(stun_interval));
                     loop {
                         tokio::select! {
                             res = &mut read => {
                                 match res {
-                                    Ok(n) => warn!(op = "read", mapper = name, "connection unexpectedly closed with {n} bytes received"),
-                                    Err(e) => error!(op = "read", mapper = name, "{e}")
+                                    Ok(n) => warn!(
+                                        op = "read",
+                                        mapper = worker_name,
+                                        "connection unexpectedly closed with {n} bytes received"
+                                    ),
+                                    Err(e) => error!(op = "read", mapper = worker_name, "{e}")
                                 }
                                 break;
                             }
                             _ = interval.tick() => {
                                 if let Err(e) = writer.write(payload.as_bytes()).await {
-                                    error!(op = "write", mapper = name, "{e}");
+                                    error!(op = "write", mapper = worker_name, "{e}");
                                     break;
                                 }
-                                let stun_addr = stun_addrs.get(i).unwrap();
-                                match map_address(local_addr, stun_addr).await {
-                                    Ok(addr) => {
-                                        if callback.send(addr).await.is_err() {
-                                            return;
-                                        }
-                                    }
-                                    Err(e) => error!(op = "stun", stun = stun_addr, mapper = name, "{e}")
-                                }
-                                i = (i + 1) % stun_addrs.len();
+                            }
+                            _ = stun.tick() => {
+                                _ = tx.try_send(());
                             }
                         }
                     }
@@ -181,8 +209,8 @@ async fn worker(
         }
     });
     Ok(Client {
-        name: worker_name,
+        name,
         local_addr,
-        handle,
+        tasks: vec![worker_handle, stun_handle],
     })
 }

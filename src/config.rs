@@ -90,9 +90,10 @@ pub struct Tcp {
     /// Internet connectivity check url. Only HTTP protocol is supported.
     /// We will periodically fetch this url to maintain a long-lived TCP connection.
     pub keepalive: Option<String>,
-    /// The interval in seconds between sending binding request messages
-    /// and fetching the keepalive url.
+    /// The interval in seconds between fetching the keepalive url.
     pub interval: Option<u64>,
+    /// The interval in seconds between sending binding request messages.
+    pub stun_interval: Option<u64>,
 }
 
 /// UDP mapping global options.

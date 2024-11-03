@@ -77,7 +77,7 @@ async fn worker(
                     let mut msg = Message::new();
                     let mut reader = BufReader::new(&buf[..len]);
                     if let Err(e) = msg.read_from(&mut reader) {
-                        error!(stun = stun_addr, mapper = name, "{e}");
+                        error!(stun = stun_addr, mapper = worker_name, "{e}");
                         continue;
                     }
                     if let Some(r) = req {
@@ -92,7 +92,7 @@ async fn worker(
                         error!(
                             transaction_id = msg.transaction_id.0.encode_hex::<String>(),
                             stun = stun_addr,
-                            mapper = name,
+                            mapper = worker_name,
                             "{e}"
                         );
                         continue;
@@ -106,7 +106,7 @@ async fn worker(
                         error!(
                             transaction_id = r.0.encode_hex::<String>(),
                             stun = stun_addr,
-                            mapper = name,
+                            mapper = worker_name,
                             "no response from stun server"
                         );
                     }
@@ -120,15 +120,15 @@ async fn worker(
                         Ok(id) => {
                             req = Some(id);
                         }
-                        Err(e) => error!(stun = stun_addr, mapper = name, "{e}")
+                        Err(e) => error!(stun = stun_addr, mapper = worker_name, "{e}")
                     };
                 }
             }
         }
     });
     Ok(Client {
-        name: worker_name,
+        name,
         local_addr,
-        handle,
+        tasks: vec![handle],
     })
 }

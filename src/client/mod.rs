@@ -13,8 +13,8 @@ pub struct Client {
     /// Socket binding address.
     /// The port wouldn't be zero.
     local_addr: SocketAddr,
-    /// Task handle.
-    handle: JoinHandle<()>,
+    /// Task handles.
+    tasks: Vec<JoinHandle<()>>,
 }
 
 impl Client {
@@ -27,7 +27,7 @@ impl Client {
     }
 
     pub fn close(&self) {
-        self.handle.abort()
+        self.tasks.iter().for_each(|t| t.abort())
     }
 }
 
