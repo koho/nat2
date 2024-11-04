@@ -23,6 +23,9 @@ pub struct Config {
     /// Configuration for AliDNS provider watcher.
     #[serde(default)]
     pub alidns: HashMap<String, AliDNS>,
+    /// Configuration for Cloudflare provider watcher.
+    #[serde(default)]
+    pub cf: HashMap<String, Cloudflare>,
     /// Configuration for HTTP watcher.
     #[serde(default)]
     pub http: HashMap<String, Http>,
@@ -49,6 +52,13 @@ pub struct AliDNS {
     pub secret_id: String,
     /// Similar to password.
     pub secret_key: String,
+}
+
+/// Configuration for Cloudflare provider.
+#[derive(Deserialize)]
+pub struct Cloudflare {
+    /// API token.
+    pub token: String,
 }
 
 /// Configuration for HTTP API.
@@ -120,13 +130,15 @@ pub struct Metadata {
     #[serde(rename = "type")]
     pub kind: Option<String>,
     /// Record priority.
-    /// This field is required for record type SVCB and HTTPS.
-    pub priority: Option<u8>,
+    /// This field is required for record type SVCB, HTTPS and MX.
+    pub priority: Option<u16>,
     /// DNS record id.
     /// This field disables the automatic creation of dns records.
     pub rid: Option<String>,
     /// TTL to use for dns records.
     pub ttl: Option<u32>,
+    /// Whether the record is proxied by Cloudflare.
+    pub proxied: Option<bool>,
 }
 
 pub(crate) fn load<P: AsRef<Path>>(path: P) -> io::Result<Config> {

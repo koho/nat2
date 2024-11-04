@@ -48,7 +48,7 @@ struct Record {
     record_line: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "MX")]
-    mx: Option<u8>,
+    mx: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "TTL")]
     ttl: Option<u32>,
@@ -316,11 +316,7 @@ impl Watcher for DnsPod {
         }
         let record = Record {
             domain,
-            subdomain: if subdomain.is_empty() {
-                "@".to_string()
-            } else {
-                subdomain
-            },
+            subdomain: dns::subdomain(subdomain),
             record_type,
             value: format_value(&md.value, addr),
             record_line: "默认",

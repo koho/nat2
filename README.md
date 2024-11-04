@@ -29,9 +29,10 @@ watcher is configured by the following JSON object.
 | value    | string | Value could contain placeholder `{ip}` and `{port}` which will be replaced with real value in the watcher. |
 | domain   | string | Domain name.                                                                                               |
 | type     | string | Record type.                                                                                               |
-| priority | int    | Record priority. This field is required for record type SVCB and HTTPS.                                    |
-| rid      | int    | DNS record id. This field disables the automatic creation of dns records.                                  |
+| priority | int    | Record priority. This field is required for record type SVCB, HTTPS and MX.                                |
+| rid      | string | DNS record id. This field disables the automatic creation of dns records.                                  |
 | ttl      | int    | TTL to use for dns records.                                                                                |
+| proxied  | bool   | Whether the record is proxied by Cloudflare.                                                               |
 
 ```json
 {
@@ -91,6 +92,24 @@ Alibaba DNS is a managed DNS providers.
     "example": {
       "secret_id": "",
       "secret_key": ""
+    }
+  }
+}
+```
+
+### Cloudflare
+
+Cloudflare DNS is a managed DNS providers.
+
+| Field | Type   | Description                                                                                 |
+|-------|--------|---------------------------------------------------------------------------------------------|
+| token | string | API token. See https://developers.cloudflare.com/fundamentals/api/get-started/create-token. |
+
+```json
+{
+  "cf": {
+    "example": {
+      "token": ""
     }
   }
 }

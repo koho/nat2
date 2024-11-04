@@ -1,4 +1,5 @@
 pub mod alidns;
+pub mod cf;
 pub mod dnspod;
 pub mod http;
 pub mod script;
@@ -40,12 +41,12 @@ pub mod dns {
             .domain
             .as_ref()
             .ok_or(anyhow!("missing field `domain`"))?;
-        let record_type = md
+        let kind = md
             .kind
             .as_ref()
             .ok_or(anyhow!("missing field `type`"))?
-            .to_lowercase();
-        if (record_type == "svcb" || record_type == "https") && md.priority.is_none() {
+            .to_uppercase();
+        if (kind == "SVCB" || kind == "HTTPS" || kind == "MX") && md.priority.is_none() {
             return Err(anyhow!("missing field `priority`"));
         }
         split_domain_name(domain).ok_or(InvalidDomainCharacter)?;
@@ -65,5 +66,14 @@ pub mod dns {
         let domain = &labels[len - 2..];
         let subdomain = &labels[..len - 2];
         Some((domain.join("."), subdomain.join(".")))
+    }
+
+    /// If `s` is empty, `@` is used.
+    pub fn subdomain(s: String) -> String {
+        if s.is_empty() {
+            "@".to_string()
+        } else {
+            s
+        }
     }
 }

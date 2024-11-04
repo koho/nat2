@@ -78,7 +78,7 @@ struct Record {
     value: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Priority")]
-    priority: Option<u8>,
+    priority: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "TTL")]
     ttl: Option<u32>,
@@ -342,11 +342,7 @@ impl Watcher for AliDns {
         }
         let record = Record {
             domain_name,
-            rr: if subdomain.is_empty() {
-                "@".to_string()
-            } else {
-                subdomain
-            },
+            rr: dns::subdomain(subdomain),
             record_type,
             value: format_value(&md.value, addr),
             priority: md.priority,
