@@ -58,7 +58,7 @@ You can define multiple watchers at the same time, just give them different name
 
 ### DNSPod
 
-DNSPod is a managed DNS providers. You can bind your mapped address to DNS record automatically using your secret id and
+DNSPod is a managed DNS provider. You can bind your mapped address to DNS record automatically using your secret id and
 secret key from DNSPod.
 
 ```json
@@ -78,7 +78,7 @@ secret key from DNSPod.
 
 ### AliDNS
 
-Alibaba DNS is a managed DNS providers.
+Alibaba DNS is a managed DNS provider.
 
 | Field      | Type   | Description                                                                                                         |
 |------------|--------|---------------------------------------------------------------------------------------------------------------------|
@@ -99,7 +99,7 @@ Alibaba DNS is a managed DNS providers.
 
 ### Cloudflare
 
-Cloudflare DNS is a managed DNS providers.
+Cloudflare DNS is a managed DNS provider.
 
 | Field | Type   | Description                                                                                 |
 |-------|--------|---------------------------------------------------------------------------------------------|
