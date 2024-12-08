@@ -1,5 +1,5 @@
-use crate::client::{Callback, Client};
-use anyhow::Result;
+use crate::client::{Callback, Client, MappedAddress};
+use anyhow::{Error, Result};
 use std::io;
 use std::io::BufReader;
 use std::net::SocketAddr;
@@ -9,9 +9,10 @@ use stun::message::{Getter, Message, BINDING_REQUEST, MAGIC_COOKIE, TRANSACTION_
 use stun::xoraddr::XorMappedAddress;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpSocket, TcpStream, ToSocketAddrs};
-use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::time;
-use tokio::time::sleep;
+use tokio::time::{sleep, sleep_until, Instant};
 use tracing::{error, warn};
 use url::ParseError::{EmptyHost, InvalidPort};
 use url::{Position, Url};
@@ -143,25 +144,36 @@ async fn worker(
     let local_addr = sock.local_addr()?;
     let worker_name = name.clone();
     let stun_name = name.clone();
-    let (tx, mut rx) = channel(1);
+    let (reset_tx, mut reset_rx) = mpsc::channel(1);
+    let (stun_tx, mut stun_rx) = watch::channel(());
+    let (addr_tx, mut addr_rx) = watch::channel(MappedAddress::default());
     let stun_handle = tokio::spawn(async move {
         let mut i = 0;
         loop {
-            rx.recv().await;
-            let stun_addr = stun_addrs.get(i).unwrap();
-            match map_address(local_addr, stun_addr).await {
-                Ok(addr) => {
-                    if callback.send(addr).await.is_err() {
+            tokio::select! {
+                res = async {
+                    stun_rx.changed().await?;
+                    let stun_addr = stun_addrs.get(i).unwrap();
+                    match map_address(local_addr, stun_addr).await {
+                        Ok(addr) => {
+                            addr_tx.send_replace(MappedAddress::from(addr));
+                        }
+                        Err(e) => error!(op = "stun", stun = stun_addr, mapper = stun_name, "{e}"),
+                    }
+                    Ok::<(), Error>(())
+                } => {
+                    if res.is_err() {
                         return;
                     }
+                    i = (i + 1) % stun_addrs.len();
+                },
+                _ = reset_rx.recv() => {
+                    stun_rx.mark_unchanged();
                 }
-                Err(e) => error!(op = "stun", stun = stun_addr, mapper = stun_name, "{e}"),
             }
-            i = (i + 1) % stun_addrs.len();
         }
     });
     let worker_handle = tokio::spawn(async move {
-        let mut discard = tokio::io::empty();
         let payload = format!(
             "HEAD {} HTTP/1.1\r\nHost: {}\r\nConnection: keep-alive\r\n\r\n",
             &url[Position::BeforePath..],
@@ -175,33 +187,80 @@ async fn worker(
                 }
                 Ok(mut stream) => {
                     let (mut reader, mut writer) = stream.split();
-                    let read = tokio::io::copy(&mut reader, &mut discard);
-                    tokio::pin!(read);
                     let mut interval = time::interval(Duration::from_secs(interval));
                     let mut stun = time::interval(Duration::from_secs(stun_interval));
+                    let mut deadline: Option<Instant> = None;
+                    let mut mapped_addr = None;
+                    addr_rx.mark_unchanged();
+                    let mut buf = vec![0; 1024];
+                    let mut total: u64 = 0;
                     loop {
                         tokio::select! {
-                            res = &mut read => {
+                            res = reader.read(&mut buf) => {
                                 match res {
-                                    Ok(n) => warn!(
-                                        op = "read",
-                                        mapper = worker_name,
-                                        "connection unexpectedly closed with {n} bytes received"
-                                    ),
-                                    Err(e) => error!(op = "read", mapper = worker_name, "{e}")
+                                    Ok(n) => {
+                                        total += n as u64;
+                                        if n == 0 {
+                                            error!(
+                                                op = "read",
+                                                mapper = worker_name,
+                                                "connection unexpectedly closed with {total} bytes received"
+                                            );
+                                            break;
+                                        } else {
+                                            deadline = None;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        error!(op = "read", mapper = worker_name, "{e}");
+                                        break;
+                                    }
                                 }
-                                break;
                             }
-                            _ = interval.tick() => {
-                                if let Err(e) = writer.write(payload.as_bytes()).await {
+                            _ = interval.tick(), if deadline.is_none() => {
+                                if let Err(e) = writer.write_all(payload.as_bytes()).await {
                                     error!(op = "write", mapper = worker_name, "{e}");
                                     break;
                                 }
+                                deadline = Some(Instant::now() + Duration::from_secs(RETRY_INTERVAL));
+                            }
+                            _ = sleep_until(deadline.unwrap_or(Instant::now())), if deadline.is_some() => {
+                                error!(
+                                    op = "read",
+                                    mapper = worker_name,
+                                    "timed out waiting for a response from keepalive server"
+                                );
+                                break;
                             }
                             _ = stun.tick() => {
-                                _ = tx.try_send(());
+                                stun_tx.send_replace(());
+                            }
+                            _ = addr_rx.changed() => {
+                                let new_addr = addr_rx.borrow_and_update().clone();
+                                if let Some(ref addr) = mapped_addr {
+                                    if &new_addr != addr {
+                                        warn!(
+                                            op = "stun",
+                                            mapper = worker_name,
+                                            "connection is closing because mapped address has changed"
+                                        );
+                                        break;
+                                    }
+                                } else {
+                                    mapped_addr = Some(new_addr.clone());
+                                    // Only the first mapped address is sent to the callback.
+                                    // A different mapped address might indicate that the mapping is broken.
+                                    if callback.send(new_addr.into()).await.is_err() {
+                                        return;
+                                    }
+                                }
                             }
                         }
+                    }
+                    drop(stream);
+                    // Cancel the current STUN request.
+                    if reset_tx.send(()).await.is_err() {
+                        return;
                     }
                     sleep(Duration::from_secs(RETRY_INTERVAL)).await;
                 }

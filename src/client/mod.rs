@@ -83,5 +83,46 @@ macro_rules! str2vec {
     };
 }
 
+/// A wrapper around a stun::xoraddr::XorMappedAddress, providing a clone method
+/// and a comparison operator.
+pub struct MappedAddress(XorMappedAddress);
+
+impl Clone for MappedAddress {
+    fn clone(&self) -> Self {
+        Self {
+            0: XorMappedAddress {
+                ip: self.0.ip.clone(),
+                port: self.0.port,
+            },
+        }
+    }
+}
+
+impl Default for MappedAddress {
+    fn default() -> Self {
+        Self {
+            0: XorMappedAddress::default(),
+        }
+    }
+}
+
+impl From<XorMappedAddress> for MappedAddress {
+    fn from(value: XorMappedAddress) -> Self {
+        Self { 0: value }
+    }
+}
+
+impl Into<XorMappedAddress> for MappedAddress {
+    fn into(self) -> XorMappedAddress {
+        self.0
+    }
+}
+
+impl PartialEq<Self> for MappedAddress {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ip == other.0.ip && self.0.port == other.0.port
+    }
+}
+
 pub mod tcp;
 pub mod udp;
