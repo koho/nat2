@@ -1,6 +1,6 @@
 [package]
 name = "nat2"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Expose your local service to Internet in full cone NAT network."
 license = "MIT"
