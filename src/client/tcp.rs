@@ -158,7 +158,7 @@ async fn worker(
                         Ok(addr) => {
                             addr_tx.send_replace(MappedAddress::from(addr));
                         }
-                        Err(e) => error!(op = "stun", stun = stun_addr, mapper = stun_name, "{e}"),
+                        Err(e) => error!(op = "stun", stun = stun_addr, mapper = stun_name, "{e}")
                     }
                     Ok::<(), Error>(())
                 } => {
@@ -210,7 +210,7 @@ async fn worker(
                                         } else {
                                             deadline = None;
                                         }
-                                    },
+                                    }
                                     Err(e) => {
                                         error!(op = "read", mapper = worker_name, "{e}");
                                         break;
