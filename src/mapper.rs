@@ -215,6 +215,7 @@ pub async fn run(cfg: Config) -> Result<Closer> {
         };
         let mut close = close.subscribe();
         tasks.push(tokio::spawn(async move {
+            let mut success = false;
             loop {
                 tokio::select! {
                     Some(addr) = rx.recv() => {
@@ -223,7 +224,8 @@ pub async fn run(cfg: Config) -> Result<Closer> {
                                 error!(mapper = mapper.name(), upnp="renew", "{e}");
                             }
                         }
-                        if mapper.changed(&addr) {
+                        let changed = mapper.changed(&addr);
+                        if changed {
                             let scheme = mapper.protocol;
                             if let Some((upnp, pm)) = pm.as_ref() {
                                 info!(
@@ -244,8 +246,12 @@ pub async fn run(cfg: Config) -> Result<Closer> {
                                     addr
                                 );
                             }
+                        }
+                        if changed || !success {
+                            success = true;
                             for (watcher, md) in watchers.iter() {
                                 if let Err(e) = watcher.new_address(&addr, md).await {
+                                    success = false;
                                     error!(
                                         mapper = mapper.name(),
                                         watcher = watcher.kind(),
