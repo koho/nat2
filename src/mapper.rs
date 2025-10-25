@@ -215,7 +215,7 @@ pub async fn run(cfg: Config) -> Result<Closer> {
         };
         let mut close = close.subscribe();
         tasks.push(tokio::spawn(async move {
-            let mut success = false;
+            let mut failed: isize = -1;
             loop {
                 tokio::select! {
                     Some(addr) = rx.recv() => {
@@ -247,17 +247,19 @@ pub async fn run(cfg: Config) -> Result<Closer> {
                                 );
                             }
                         }
-                        if changed || !success {
-                            success = true;
-                            for (watcher, md) in watchers.iter() {
+                        if changed || failed >= 0 {
+                            let i = if changed { 0 } else { failed as usize };
+                            failed = -1;
+                            for (j, (watcher, md)) in watchers[i..].iter().enumerate() {
                                 if let Err(e) = watcher.new_address(&addr, md).await {
-                                    success = false;
+                                    failed = (i + j) as isize;
                                     error!(
                                         mapper = mapper.name(),
                                         watcher = watcher.kind(),
                                         name = &md.name,
                                         "{e}"
                                     );
+                                    break;
                                 }
                             }
                         }
